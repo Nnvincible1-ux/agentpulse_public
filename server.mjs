@@ -8,6 +8,7 @@ import {Push} from './lib/push.mjs';
 import {Sessions} from './lib/sessions.mjs';
 import {requestLive, requestSessionKey} from './lib/request-lifecycle.mjs';
 import {Replies} from './lib/replies.mjs';
+import {ClaudeChannels} from './lib/claude-channels.mjs';
 import {equal,fail} from './lib/storage.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,12 +22,14 @@ const BRIDGE_TOKEN = process.env.AGENTPULSE_BRIDGE_TOKEN || '';
 const MOBILE_TOKEN = process.env.AGENTPULSE_MOBILE_TOKEN || '';
 const PUBLIC_ORIGIN = (process.env.AGENTPULSE_PUBLIC_ORIGIN || '').replace(/\/$/, '');
 const TTL_SECONDS = Math.max(30, Math.min(300, Number(process.env.AGENTPULSE_REQUEST_TTL_SECONDS || 120)));
+const CLAUDE_CHANNEL_ENABLED = process.env.AGENTPULSE_CLAUDE_CHANNEL_ENABLED === 'true';
 const ownerAuth = new Auth({dir:dataDir,origin:PUBLIC_ORIGIN,bootstrapToken:MOBILE_TOKEN});
 const push = new Push({dir:dataDir,origin:PUBLIC_ORIGIN});
 const sessions = new Sessions({dir:dataDir});
 const replies = new Replies({dir:dataDir,lookup:(machineId,id)=>sessions.list().find(s=>s.machineId===machineId&&s.id===id)});
+const claudeChannels = new ClaudeChannels({dir:dataDir,enabled:CLAUDE_CHANNEL_ENABLED,lookup:(machineId,id)=>sessions.list().find(s=>s.machineId===machineId&&s.id===id)});
 setInterval(() => {
-  try { sessions.prune(); replies.prune(); } catch { console.error('Session cleanup failed.'); }
+  try { sessions.prune(); replies.prune(); claudeChannels.prune(); } catch { console.error('Session cleanup failed.'); }
 }, 60000).unref();
 
 if (!BRIDGE_TOKEN || (!MOBILE_TOKEN && !ownerAuth.configured)) {
@@ -225,12 +228,19 @@ const server = http.createServer(async (req, res) => {
 
     if (p.startsWith('/api/bridge/')) {
       if (!auth(req, BRIDGE_TOKEN)) return json(res,401,{error:'unauthorized'});
+      if (req.method === 'POST' && ['/api/bridge/claude-channels/connect','/api/bridge/claude-channels/poll','/api/bridge/claude-channels/ack','/api/bridge/claude-channels/disconnect'].includes(p)) {
+        const body=await readBody(req,32768);
+        const action=p.slice(p.lastIndexOf('/')+1);
+        return json(res,200,claudeChannels[action](body));
+      }
       if (req.method === 'POST' && ['/api/bridge/replies/poll','/api/bridge/replies/ack'].includes(p)) {
         const body=await readBody(req,8192);
         return json(res,200,p.endsWith('/poll')?replies.poll(body):replies.ack(body));
       }
       if (req.method === 'POST' && p === '/api/bridge/sessions') {
-        const notifications = sessions.update(await readBody(req, 1024 * 1024));
+        const snapshot=await readBody(req, 1024 * 1024);
+        const notifications = sessions.update(snapshot);
+        for(const liveSession of sessions.list())if(liveSession.machineId===snapshot.machineId)claudeChannels.observe(liveSession);
         for (const session of notifications) void push.notifySession(session).catch(() => console.error('Session notification delivery failed.'));
         return json(res,200,{ok:true});
       }
@@ -271,8 +281,8 @@ const server = http.createServer(async (req, res) => {
       const session=ownerAuth.session(req);
       if (!session) return json(res,401,{error:'unauthorized'});
       if (req.method==='GET' && p==='/api/mobile/sessions') {
-        replies.prune();
-        return json(res,200,{sessions:sessions.list().map(s=>({...s,reply:replies.view(s)}))});
+        replies.prune();claudeChannels.prune();
+        return json(res,200,{sessions:sessions.list().map(s=>({...s,reply:replies.view(s),channel:claudeChannels.view(s)}))});
       }
       if(req.method!=='GET') ownerAuth.checkMutation(req,session);
       if(req.method==='POST' && ['/api/mobile/replies/send','/api/mobile/replies/cancel','/api/mobile/replies/release'].includes(p)) {
@@ -280,6 +290,12 @@ const server = http.createServer(async (req, res) => {
         if(ownerAuth.session(req)!==session) return json(res,401,{error:'unauthorized'});
         const result=p.endsWith('/send')?replies.send(body):p.endsWith('/cancel')?replies.cancel(body):replies.release(body);
         return json(res,200,result);
+      }
+      if(req.method==='POST' && ['/api/mobile/claude-channels/send','/api/mobile/claude-channels/update','/api/mobile/claude-channels/cancel'].includes(p)) {
+        const body=await readBody(req,32768);
+        if(ownerAuth.session(req)!==session) return json(res,401,{error:'unauthorized'});
+        const action=p.slice(p.lastIndexOf('/')+1);
+        return json(res,200,claudeChannels[action](body));
       }
       if (req.method === 'GET' && p === '/api/mobile/config') return json(res,200,{pushPublicKey:push.publicKey});
       if(req.method==='POST' && p.startsWith('/api/mobile/push/')) {

@@ -23,6 +23,7 @@ STATES = {'SessionStart': 'idle', 'UserPromptSubmit': 'working', 'PreToolUse': '
           'PostToolUse': 'working', 'PermissionRequest': 'waiting', 'Stop': 'idle',
           'StopFailure': 'error', 'SessionEnd': 'closed', 'Interrupt': 'interrupted'}
 SENSITIVE = re.compile(r'api[_-]?key|access[_-]?token|secret|password|passwd|authorization|-----BEGIN|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]+|://[^\s/]+:[^\s/]+@', re.I)
+IDENTIFIER = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 
 
 def text(value, limit):
@@ -57,6 +58,27 @@ def read_private(file, default):
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
             raise ValueError('Unsafe monitor file')
         return json.load(handle)
+
+
+def channel_live(session_id, now=None, root=ROOT):
+    if not isinstance(session_id, str) or not IDENTIFIER.fullmatch(session_id):
+        return False
+    timestamp = int(time.time() * 1000) if now is None else now
+    try:
+        marker = read_private(root / 'channels' / (session_id + '.json'), None)
+        if (not isinstance(marker, dict) or marker.get('version') != 1 or marker.get('sessionId') != session_id or
+                not isinstance(marker.get('pid'), int) or marker['pid'] < 1 or
+                not isinstance(marker.get('updatedAt'), int) or marker['updatedAt'] <= timestamp - 25000 or marker['updatedAt'] > timestamp + 5000):
+            return False
+        try:
+            os.kill(marker['pid'], 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            pass
+        return True
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
 
 
 def parse_processes(raw):
@@ -110,6 +132,11 @@ def normalize_event(provider, event, process, previous, now, show_private=False)
     hidden = previous.get('summaryHidden', False)
     summary_at = previous.get('summaryAt', previous.get('updatedAt', 0) if previous.get('activity') == 'Stop' and summary else 0)
     truncated = previous.get('summaryTruncated', False)
+    turn_started = previous.get('turnStartedAt', 0)
+    if name == 'UserPromptSubmit':
+        turn_started = now
+    elif name in ('SessionStart', 'Stop', 'StopFailure', 'SessionEnd'):
+        turn_started = 0
     if name in ('Stop', 'StopFailure'):
         raw = event.get('last_assistant_message', '')
         if isinstance(raw, str) and raw.strip():
@@ -122,7 +149,7 @@ def normalize_event(provider, event, process, previous, now, show_private=False)
         'pid': process['pid'], 'processStarted': process['started'], 'tty': process['tty'],
         'status': status, 'activity': text(event.get('tool_name'), 160) if name in ('PreToolUse', 'PostToolUse', 'PermissionRequest') else name,
         'summary': summary, 'summaryHidden': hidden, 'summaryAt': summary_at, 'summaryTruncated': truncated, 'eventId': str(uuid.uuid4()) if name in ('Stop', 'StopFailure') else previous.get('eventId', ''),
-        'updatedAt': now,
+        'turnStartedAt': turn_started, 'updatedAt': now,
     }
 
 
@@ -176,7 +203,8 @@ def merge_sessions(registry, rows, now, cwd_lookup=process_cwd):
             started_at = 0
         result.append({'id': identifier, 'provider': process['provider'], 'project': Path(cwd).name or 'Unknown project',
                        'cwd': text(cwd, 1024), 'pid': pid, 'tty': process['tty'], 'status': 'untracked',
-                       'activity': '', 'summary': '', 'summaryHidden': False, 'eventId': '', 'updatedAt': min(started_at, now)})
+                       'activity': '', 'summary': '', 'summaryHidden': False, 'eventId': '', 'turnStartedAt': 0,
+                       'updatedAt': min(started_at, now)})
     return result[-100:]
 
 
@@ -210,9 +238,12 @@ def main():
         try:
             row = record(mode)
             if row and row['status'] == 'idle' and row['activity'] == 'Stop' and row.get('tty') not in (None, '', '??', '?'):
-                from mobile_replies import listen
                 body = snapshot()
                 publish(body)
+                if mode == 'claude' and channel_live(row['id']):
+                    print('{}')
+                    return
+                from mobile_replies import listen
                 def current():
                     registry = read_private(ROOT / 'sessions.json', [])
                     return any(s['id'] == row['id'] and s.get('eventId') == row['eventId'] and s.get('status') == 'idle' for s in registry)

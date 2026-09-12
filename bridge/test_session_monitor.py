@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,11 +19,19 @@ class SessionMonitorTests(unittest.TestCase):
         process = {'pid': 12, 'started': 'one', 'tty': 'ttys003'}
         start = monitor.normalize_event('claude', {'hook_event_name': 'UserPromptSubmit', 'session_id': 's1', 'cwd': '/tmp/project', 'prompt': 'private prompt'}, process, {}, 1000)
         self.assertEqual(start['status'], 'working')
+        self.assertEqual(start['turnStartedAt'], 1000)
         self.assertNotIn('private prompt', json.dumps(start))
         stop = monitor.normalize_event('claude', {'hook_event_name': 'Stop', 'session_id': 's1', 'cwd': '/tmp/project', 'last_assistant_message': 'Done: A.\nRemaining: B, C.'}, process, start, 2000)
         self.assertEqual(stop['status'], 'idle')
         self.assertIn('Remaining: B, C.', stop['summary'])
         self.assertNotEqual(start['eventId'], stop['eventId'])
+        self.assertEqual(stop['turnStartedAt'], 0)
+
+    def test_tool_activity_preserves_current_turn_start(self):
+        process = {'pid': 12, 'started': 'one', 'tty': 'ttys003'}
+        start = monitor.normalize_event('claude', {'hook_event_name': 'UserPromptSubmit', 'session_id': 's1'}, process, {}, 1000)
+        tool = monitor.normalize_event('claude', {'hook_event_name': 'PreToolUse', 'session_id': 's1', 'tool_name': 'Bash'}, process, start, 2000)
+        self.assertEqual(tool['turnStartedAt'], 1000)
 
     def test_secret_bearing_response_is_withheld_and_does_not_enter_registry(self):
         row = monitor.normalize_event('codex', {'hook_event_name': 'Stop', 'session_id': 's1', 'cwd': '/tmp/project', 'last_assistant_message': 'API_KEY=synthetic-secret'}, {'pid': 12, 'started': 'one', 'tty': ''}, {}, 1000)
@@ -64,6 +73,29 @@ class SessionMonitorTests(unittest.TestCase):
             monitor.main()
             publish.assert_called_once()
             self.assertEqual(listen.call_args[0][0],{'machineId':'mac','sessionId':'s','eventId':'e'})
+
+    def test_live_claude_channel_skips_the_stop_reply_listener(self):
+        row={'id':'s','status':'idle','activity':'Stop','eventId':'e','tty':'ttys001'}
+        with patch.object(monitor,'record',return_value=row), patch.object(monitor.sys,'argv',['monitor','claude']), patch.object(monitor,'publish') as publish, patch.object(monitor,'snapshot',return_value={'machineId':'mac'}), patch.object(monitor,'channel_live',return_value=True), patch('mobile_replies.listen') as listen, patch('builtins.print') as output:
+            monitor.main()
+            publish.assert_called_once()
+            listen.assert_not_called()
+            output.assert_called_once_with('{}')
+
+    def test_channel_marker_must_be_private_fresh_and_alive(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);directory=root/'channels';directory.mkdir()
+            file=directory/'session-1.json'
+            monitor.write_private(file,{'version':1,'sessionId':'session-1','pid':123,'updatedAt':1000})
+            with patch.object(os,'kill') as alive:
+                self.assertTrue(monitor.channel_live('session-1',now=25000,root=root))
+                alive.assert_called_once_with(123,0)
+            self.assertFalse(monitor.channel_live('session-1',now=26001,root=root))
+            monitor.write_private(file,{'version':1,'sessionId':'other','pid':123,'updatedAt':26000})
+            self.assertFalse(monitor.channel_live('session-1',now=26000,root=root))
+            monitor.write_private(file,{'version':1,'sessionId':'session-1','pid':123,'updatedAt':26000})
+            file.chmod(0o644)
+            self.assertFalse(monitor.channel_live('session-1',now=26000,root=root))
 
     def test_untracked_process_heartbeat_does_not_invent_new_activity(self):
         rows={12:{'pid':12,'ppid':1,'provider':'claude','started':'Fri Sep 11 21:00:00 2026','tty':'ttys001'}}

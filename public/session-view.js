@@ -1,6 +1,6 @@
 import {isLiveTerminal,selectSessions,responseNote,responseExcerpt} from './session-list.js';
 import {requestsForSession} from './session-requests.js';
-import {replyComposer,clearReplyDrafts} from './session-replies.js';
+import {replyComposer,clearReplyDrafts,activeChannelMessage,channelStatusText,channelIsStalled} from './session-replies.js';
 const $ = selector => document.querySelector(selector);
 const labels = { working: "Working", waiting: "Waiting for you", idle: "Response ready", interrupted: "Interrupted", error: "Needs attention", closed: "Closed", untracked: "Not reporting yet" };
 const activities = { SessionStart: "Session started", UserPromptSubmit: "Started working", Stop: "Response ready", StopFailure: "Agent reported an error", SessionEnd: "Session ended", Interrupt: "Interrupted" };
@@ -13,6 +13,18 @@ function element(tag, className, content) {
   if (className) el.className = className;
   if (content != null) el.textContent = content;
   return el;
+}
+function age(timestamp) {
+  const seconds=Math.max(0,Math.floor((Date.now()-timestamp)/1000));
+  if(seconds<60)return `${seconds} seconds ago`;
+  const minutes=Math.floor(seconds/60);if(minutes<60)return `${minutes} minute${minutes===1?'':'s'} ago`;
+  const hours=Math.floor(minutes/60);return `${hours} hour${hours===1?'':'s'} ago`;
+}
+function appendResponse(container,session,heading) {
+  container.append(element('h2','session-response-heading',heading));
+  if(session.summaryAt)container.append(element('p','field-note','Response captured · '+new Date(session.summaryAt).toLocaleString()));
+  const note=responseNote(session);if(note)container.append(element('p','field-note session-response-note',note));
+  container.append(element('p','session-response',session.summaryHidden?'':session.summary||''));
 }
 function render() {
   const focused=document.activeElement;
@@ -36,22 +48,23 @@ function render() {
   }
   const nodes = visible.map(s => {
     const pending = requestsForSession(s,sessions,requests);
+    const channelMessage=activeChannelMessage(s.channel?.messages);
     const row = element("details", "session-row");
     row.dataset.id = s.machineId + ":" + s.id;
     row.open = opened.has(row.dataset.id) || (selected === s.id && firstRender);
     const heading = element("summary", "session-heading");
     const identity = element("div", "session-identity");
     identity.append(element("strong", "", s.project || "Unknown project"), element("span", "session-location", `${s.provider === "claude" ? "Claude" : "Codex"} · ${s.tty && s.tty !== "??" ? s.tty : "App / background"} · ${s.machineName}`));
-    const statusLabel = pending.length ? 'Approval / answer needed' : s.status === "idle" && !s.eventId ? "Ready" : labels[s.status];
+    const statusLabel = pending.length ? 'Approval / answer needed' : channelMessage ? channelStatusText(channelMessage.status) : s.status === "idle" && !s.eventId ? "Ready" : labels[s.status];
     const status = element("span", "session-status", s.status === "closed" ? "Closed" : s.online ? statusLabel : `Offline · ${statusLabel}`);
     status.dataset.state = s.online ? s.status : "offline";
-    const preview=element('span','session-preview',pending.length ? pending[0].title + ' · ' + (pending[0].detail || '').slice(0,180) : responseExcerpt(s));
+    const preview=element('span','session-preview',pending.length ? pending[0].title + ' · ' + (pending[0].detail || '').slice(0,180) : channelMessage ? channelMessage.text : responseExcerpt(s));
     identity.append(preview,element('span','session-location',s.updatedAt>0?'Session update · '+new Date(s.updatedAt).toLocaleString():'No activity time available'));
     heading.append(identity, status);
     row.append(heading);
     const body = element("div", "session-body");
     const info = element("dl", "session-metadata");
-    for (const [key, value] of [["Folder", s.cwd || "Unavailable"], ["Process", String(s.pid)], ["Last activity", activities[s.activity] || s.activity || "No session events received"], ["Last update", new Date(s.updatedAt).toLocaleString()]]) {
+    for (const [key, value] of [["Folder", s.cwd || "Unavailable"], ["Process", String(s.pid)], ["Last activity", `${activities[s.activity] || s.activity || "No session events received"}${s.updatedAt?` · ${age(s.updatedAt)}`:''}`], ["Last update", new Date(s.updatedAt).toLocaleString()]]) {
       info.append(element("dt", "", key), element("dd", "", value));
     }
 
@@ -62,11 +75,16 @@ function render() {
     } else if(s.status==='waiting') {
       body.append(element('p','field-note','The terminal reports a wait, but no connected approval is available. Its hook may have ended. Check Inbox or retry the command in the terminal.'));
     }
-    body.append(element("h2", "session-response-heading", pending.length ? "Earlier agent response" : "Last agent response"));
-    if(s.summaryAt)body.append(element('p','field-note','Response captured · '+new Date(s.summaryAt).toLocaleString()));
-    const note=responseNote(s);
-    if(note)body.append(element('p','field-note session-response-note',note));
-    body.append(element("p", "session-response", s.summaryHidden ? "" : s.summary || ""));
+    if(!pending.length&&channelMessage){
+      body.append(element('h2','session-response-heading','Current instruction'));
+      body.append(element('p','session-response session-current-instruction',channelMessage.text));
+      body.append(element('p','field-note',`${channelStatusText(channelMessage.status)} · sent ${new Date(channelMessage.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`));
+      if(channelIsStalled(s,channelMessage))body.append(element('p','session-stalled','No activity for 2 minutes — Claude may be running a long command or waiting.'));
+      if(s.summary||s.summaryHidden){
+        const previous=element('details','session-previous');previous.append(element('summary','','Previous response'));
+        const content=element('div','session-previous-content');appendResponse(content,s,'Previous agent response');previous.append(content);body.append(previous);
+      }
+    }else appendResponse(body,s,pending.length?'Earlier agent response':'Last agent response');
     if(!pending.length)body.append(replyComposer(s,render));
     const metadata=element('details','session-technical');
     metadata.append(element('summary','','Session details'),info);
@@ -85,7 +103,7 @@ export function updateSessions(value) {
     if(target){provider=target.provider;if(!isLiveTerminal(target))$("#sessionFilter").value='all';}
   }
   // Heartbeats refresh availability without rebuilding an expanded response every ten seconds.
-  const next = JSON.stringify(value.map(({ seenAt, ...s }) => s));
+  const next = JSON.stringify({ageBucket:Math.floor(Date.now()/30000),sessions:value.map(({ seenAt, ...s }) => s)});
   if (next !== fingerprint) { fingerprint = next; render(); }
 }
 export function updateSessionRequests(value, renderer) {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isLiveTerminal,selectSessions,responseNote,responseExcerpt} from '../public/session-list.js';
+import {composerMode,activeChannelMessage,channelStatusText,channelIsStalled} from '../public/session-replies.js';
 const row={id:'one',machineId:'mac',provider:'claude',tty:'ttys001',online:true,status:'idle',updatedAt:100,summary:'Actual answer',summaryAt:80};
 test('live terminals exclude closed, offline and app/background processes',()=>{
  assert.equal(isLiveTerminal(row),true);
@@ -30,4 +31,34 @@ test('collapsed preview uses the final paragraph without changing the full respo
  assert.equal(responseExcerpt(s),'Account pages remain unpushed until you say so.');
  assert.ok(s.summary.startsWith('Deploy complete.'));
  assert.equal(responseExcerpt({...s,summaryHidden:true}),'Response withheld');
+});
+
+test('live Claude channels stay writable while Claude is working',()=>{
+ const session={...row,status:'working',channel:{enabled:true,ready:true,messages:[]},reply:{ready:false,messages:[]}};
+ assert.equal(composerMode(session,1000),'channel');
+ assert.equal(composerMode({...session,provider:'codex'},1000),'none');
+ assert.equal(composerMode({...session,channel:{enabled:true,ready:false,messages:[]}},1000),'none');
+ assert.equal(composerMode({...session,status:'idle',channel:{enabled:false,ready:false,messages:[]},reply:{ready:true,until:2000,messages:[]}},1000),'reply');
+});
+
+test('current channel instruction and delivery labels are explicit',()=>{
+ const messages=[
+  {id:'old',text:'Old',status:'completed',createdAt:100},
+  {id:'current',text:'Run items 1–3.',status:'working',createdAt:200,deliveredAt:210},
+ ];
+ assert.equal(activeChannelMessage(messages).id,'current');
+ assert.equal(channelStatusText('queued'),'Queued on AgentPulse');
+ assert.equal(channelStatusText('claimed'),'Delivering to Claude Code');
+ assert.equal(channelStatusText('delivered'),'Sent to Claude Code');
+ assert.equal(channelStatusText('working'),'Claude is working');
+ assert.equal(channelStatusText('completed'),'Response ready');
+ assert.match(channelStatusText('expired'),/could not be confirmed/);
+});
+
+test('inactivity warning needs an online delivered instruction and two quiet minutes',()=>{
+ const message={status:'working',createdAt:1000,deliveredAt:2000};
+ assert.equal(channelIsStalled({...row,online:true,updatedAt:3000},message,122999),false);
+ assert.equal(channelIsStalled({...row,online:true,updatedAt:3000},message,123000),true);
+ assert.equal(channelIsStalled({...row,online:false,updatedAt:3000},message,200000),false);
+ assert.equal(channelIsStalled({...row,online:true,updatedAt:3000},{...message,status:'queued'},200000),false);
 });

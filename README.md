@@ -64,6 +64,8 @@ Copy the two generated tokens into `.env`, then configure at least:
 AGENTPULSE_PUBLIC_ORIGIN=https://pulse.example.com
 AGENTPULSE_BRIDGE_TOKEN=...
 AGENTPULSE_MOBILE_TOKEN=...
+# Enable only after installing the matching local Claude Channel revision.
+AGENTPULSE_CLAUDE_CHANNEL_ENABLED=false
 ```
 
 Start directly:
@@ -154,6 +156,52 @@ python3 bridge/install_claude.py uninstall
 ```
 
 A copy-paste hook example is also available in `bridge/claude-hooks.example.json`.
+
+### Send messages while Claude is working (research preview)
+
+AgentPulse can also register an official Claude Code custom Channel. It gives a
+connected session an always-available **Send to Claude** composer and a **Request
+status** action in the Terminals view. This is separate from permissions:
+approvals and `AskUserQuestion` still use the existing reviewed hook above.
+
+Roll out the Channel in this order:
+
+1. Deploy the server revision and set
+   `AGENTPULSE_CLAUDE_CHANNEL_ENABLED=true` in the AgentPulse server environment.
+2. On the Mac, pull that same AgentPulse revision and run `npm ci`.
+3. Confirm the private bridge connection and session monitor are already
+   configured, then run:
+
+   ```bash
+   python3 bridge/install_claude_channel.py install
+   ```
+
+4. Start each new opted-in Claude Code session with:
+
+   ```bash
+   claude --dangerously-load-development-channels server:agentpulse
+   ```
+
+5. Review Claude's MCP and Channel trust prompt. Open the session in AgentPulse,
+   confirm **Channel connected**, and try **Request status**.
+
+Custom channels are a Claude Code research-preview feature. The scoped
+`--dangerously-load-development-channels server:agentpulse` flag permits the
+configured `agentpulse` server to provide a development Channel; it does not
+approve shell commands, change permanent permission rules, or grant other MCP
+servers trust. The installer edits only `mcpServers.agentpulse` in
+`~/.claude.json`, backs up the existing file, and stores no bridge token there.
+It uses the existing private mode-0600 AgentPulse connection file.
+
+To remove only the Channel registration:
+
+```bash
+python3 bridge/install_claude_channel.py uninstall
+```
+
+With `AGENTPULSE_CLAUDE_CHANNEL_ENABLED=false`, the server rejects Channel
+registration and existing hooks continue to work. Disable the flag first when
+rolling back.
 
 ## 4. Connect Codex
 
@@ -273,6 +321,30 @@ MCP bridge are included, but should be verified against the exact Codex build
 in use before relying on them for daily work.
 
 ## Follow-up messages from your phone
+
+### Connected Claude Channel
+
+A Channel-enabled Claude session can receive a message while it is idle or
+working. **Queued on AgentPulse** means the authenticated server accepted the
+message. **Sent to Claude Code** means the local MCP transport accepted the
+event; it does not prove Claude read it. A later lifecycle hook changes the
+state to **Claude is working**, and a later Stop event changes it to **Response
+ready**. The previous response moves under **Previous response** while a newer
+instruction is active.
+
+Only one unclaimed message may wait per session. It can be edited or cancelled
+before the Channel claims it. If the process remains online without a newer
+lifecycle event for two minutes, AgentPulse says Claude may be running a long
+command or waiting; it does not declare the process stuck. **Request status**
+sends a normal instruction and cannot interrupt a blocking tool.
+
+Messages remain private for at most 24 hours and never enter Web Push payloads.
+A server restart expires queued and claimed messages instead of replaying an
+uncertain instruction. AgentPulse does not stream the terminal, collect a
+transcript, inject keystrokes, or remotely kill the Claude process. Keep the
+terminal available when a command is truly hung.
+
+### Stop-hook fallback
 
 For interactive terminal sessions (with a TTY), after an agent finishes a response, its synchronous Stop hook waits for an explicit
 message for up to eight hours. In **Terminals**, expand that session, write a

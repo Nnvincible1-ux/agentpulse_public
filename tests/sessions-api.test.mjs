@@ -18,7 +18,8 @@ test("session snapshots require a bridge token and are readable only after owner
   for (let i = 0; i < 80; i++) { try { if ((await fetch(base + "/healthz")).ok) { ready = true; break; } } catch {} await new Promise(r => setTimeout(r, 50)); }
   assert.ok(ready);
   const post = (url, body, headers = {}) => fetch(base + url, { method: "POST", headers: { "content-type": "application/json", origin: base, ...headers }, body: JSON.stringify(body) });
-  const snapshot = { machineId: "synthetic-mac", machineName: "Synthetic Mac", sessions: [{ id: "synthetic-session", provider: "claude", project: "sample", cwd: "/tmp/sample", tty: "ttys001", pid: 123, status: "working", activity: "Bash", summary: "Latest synthetic response", eventId: "", updatedAt: Date.now() }] };
+  const now=Date.now();
+  const snapshot = { machineId: "synthetic-mac", machineName: "Synthetic Mac", sessions: [{ id: "synthetic-session", provider: "claude", project: "sample", cwd: "/tmp/sample", tty: "ttys001", pid: 123, status: "working", activity: "Bash", summary: "Latest synthetic response", eventId: "", turnStartedAt:now-1000, updatedAt: now }] };
   assert.equal((await post("/api/bridge/sessions", snapshot)).status, 401);
   assert.equal((await post("/api/bridge/sessions", snapshot, { authorization: "Bearer test-bridge" })).status, 200);
   assert.equal((await fetch(base + "/api/mobile/sessions", { headers: { authorization: "Bearer test-bridge" } })).status, 401);
@@ -31,4 +32,7 @@ test("session snapshots require a bridge token and are readable only after owner
   assert.equal(data.sessions[0].project, "sample");
   assert.equal(data.sessions[0].summary, "Latest synthetic response");
   assert.equal(data.sessions[0].online, true);
+  assert.equal(data.sessions[0].turnStartedAt,now-1000);
+  const invalid=structuredClone(snapshot);invalid.sessions[0].turnStartedAt=now+1;
+  assert.equal((await post("/api/bridge/sessions",invalid,{authorization:"Bearer test-bridge"})).status,400);
 });

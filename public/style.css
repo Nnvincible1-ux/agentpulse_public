@@ -931,6 +931,12 @@ svg {
 .reply-message { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .reply-message .field-note { margin-top: 6px; }
 .reply-message button { margin-top: 8px; }
+.reply-message button + button { margin-left: 8px; }
+.session-current-instruction { padding: 14px 16px; background: var(--selected); border-radius: 9px; }
+.session-stalled { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); }
+.session-previous { margin-top: 20px; border-top: 1px solid var(--line); }
+.session-previous > summary { cursor: pointer; min-height: 44px; padding: 14px 0; font-weight: 650; }
+.session-previous-content { padding-bottom: 8px; }
 
 .session-providers { display: flex; gap: 8px; margin-top: 24px; }
 .session-providers button { min-height: 44px; flex: 1; padding: 10px 14px; border: 1px solid var(--line); border-radius: 9px; font-weight: 650; }
