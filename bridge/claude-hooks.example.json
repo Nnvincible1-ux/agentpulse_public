@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/agentpulse/bridge/local_connection.py claude",
+            "timeout": 2147483,
+            "statusMessage": "Waiting for AgentPulse or this computer"
+          }
+        ]
+      }
+    ]
+  }
+}

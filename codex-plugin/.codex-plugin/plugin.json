@@ -1,0 +1,17 @@
+{
+  "name": "agentpulse",
+  "version": "0.1.0",
+  "description": "Route Codex permission requests and short questions to AgentPulse mobile control.",
+  "author": { "name": "AgentPulse" },
+  "license": "MIT",
+  "keywords": ["agentpulse", "codex", "mobile", "approvals"],
+  "interface": {
+    "displayName": "AgentPulse",
+    "shortDescription": "Mobile approvals and questions for Codex.",
+    "longDescription": "Send bounded Codex permission requests and short choice questions to an AgentPulse PWA while preserving terminal fallback.",
+    "developerName": "AgentPulse",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive"],
+    "brandColor": "#111827"
+  }
+}

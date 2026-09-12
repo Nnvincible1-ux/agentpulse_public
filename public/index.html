@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f6f5f0" />
+    <meta
+      name="description"
+      content="Respond to Claude Code and Codex requests from your phone. Your terminal stays in control."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="stylesheet" href="/style.css?v=approval-1" />
+    <title>AgentPulse</title>
+  </head>
+  <body>
+    <!-- THESIS: A small inbox for decisions away from the computer.
+       OWN-WORLD: Warm paper, olive ink, fine rules, lime actions, provider initials.
+       STORY: Inspect a bounded request, choose an answer, return it to the live session.
+       FIRST VIEWPORT: Phone inbox with expanded request; desktop rail, queue, detail.
+       FORM: Approval inbox; based on the AgentPulse concept shown in this conversation.
+       No sample data or simulated connection states in the production interface. -->
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="app-shell">
+      <header class="brand-header">
+        <a class="brand" href="/" aria-label="AgentPulse home"
+          ><img src="/icon.svg" width="28" height="28" alt="" />AgentPulse</a
+        >
+        <span class="server-state" id="connection" role="status"
+          >Not connected</span
+        >
+      </header>
+      <nav
+        class="navigation"
+        aria-label="Main navigation"
+        hidden
+        id="navigation"
+      >
+        <button class="nav-button active" data-view="inbox" aria-current="page">
+          <span data-icon="inbox"></span>Inbox<span class="count" id="navCount"
+            >0</span
+          >
+        </button>
+        <button class="nav-button" data-view="sessions">
+          <span data-icon="terminal"></span>Terminals
+        </button>
+        <button class="nav-button" data-view="connection">
+          <span data-icon="link"></span>Connection
+        </button>
+        <p class="nav-note">Your agents.<br />A decision away.</p>
+      </nav>
+      <main id="main" tabindex="-1">
+        <section class="login-view" id="loginView">
+          <div class="login-intro">
+            <span class="illustrative-mark" aria-hidden="true"
+              ><img src="/icon.svg" width="48" height="48" alt=""
+            /></span>
+            <h1>Your agents.<br />A decision away.</h1>
+            <p>
+              Read what Claude Code or Codex needs, send your answer, and get
+              back to your day.
+            </p>
+            <p class="fine-print">
+              Your terminal remains the fallback. No answer is never an
+              approval.
+            </p>
+          </div>
+          <form class="login-form" id="loginForm">
+            <h2 id="loginTitle">Opening AgentPulse…</h2>
+            <p id="loginHint">Checking your account.</p>
+            <div id="accountFields" hidden>
+              <div id="ownershipField" hidden>
+                <label for="tokenInput">Existing mobile access token</label>
+                <input
+                  id="tokenInput"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="none"
+                  disabled
+                  required
+                />
+                <p class="field-note">
+                  One-time proof that you own this server. Find it in your
+                  AgentPulse environment variables in Coolify.
+                </p>
+              </div>
+              <label for="emailInput">Email</label>
+              <input
+                id="emailInput"
+                type="email"
+                autocomplete="username"
+                maxlength="254"
+                autocapitalize="none"
+                spellcheck="false"
+                required
+                disabled
+              />
+              <label for="passwordInput">Password</label>
+              <input
+                id="passwordInput"
+                type="password"
+                autocomplete="current-password"
+                maxlength="256"
+                required
+                disabled
+              />
+              <div id="loginCodeField" hidden>
+                <label for="loginCode">Authenticator or recovery code</label>
+                <input
+                  id="loginCode"
+                  type="text"
+                  autocomplete="one-time-code"
+                  maxlength="40"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  required
+                  disabled
+                />
+              </div>
+            </div>
+            <div id="resetFields" hidden>
+              <label for="resetEmail">Account email</label>
+              <input id="resetEmail" type="email" autocomplete="username" maxlength="254" autocapitalize="none" spellcheck="false" required disabled />
+              <label for="resetMethod">Verify ownership with</label>
+              <select id="resetMethod" disabled>
+                <option value="recovery">Recovery code and authenticator</option>
+                <option value="admin">Reset code from Coolify</option>
+              </select>
+              <div id="resetRecoveryFields">
+                <label for="resetRecoveryCode">Unused recovery code</label>
+                <input id="resetRecoveryCode" type="password" autocomplete="off" maxlength="40" spellcheck="false" required disabled />
+                <label for="resetAuthenticatorCode">Six-digit authenticator code</label>
+                <input id="resetAuthenticatorCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required disabled />
+                <p class="field-note">Use one of the recovery codes saved when you created your account, together with a fresh authenticator code.</p>
+              </div>
+              <div id="resetAdminFields" hidden>
+                <label for="resetAdminCode">One-time reset code</label>
+                <input id="resetAdminCode" type="password" autocomplete="off" maxlength="43" spellcheck="false" required disabled />
+                <p class="field-note">In Coolify, open the AgentPulse application’s Terminal and run:</p>
+                <code class="reset-command">node scripts/create-password-reset.mjs</code>
+                <p class="field-note">Paste the code here within 15 minutes. You will still need your authenticator or an unused recovery code to sign in.</p>
+              </div>
+              <label for="resetPassword">New password</label>
+              <input id="resetPassword" type="password" autocomplete="new-password" minlength="15" maxlength="256" required disabled />
+              <label for="resetPasswordConfirm">Confirm new password</label>
+              <input id="resetPasswordConfirm" type="password" autocomplete="new-password" minlength="15" maxlength="256" required disabled />
+              <p class="field-note">Use at least 15 characters. Resetting your password signs out all sessions. Your authenticator stays enabled.</p>
+            </div>
+            <div id="enrollmentFields" hidden>
+              <img
+                id="totpQr"
+                class="totp-qr"
+                alt="Scan this QR code with your authenticator app"
+                width="280"
+                height="280"
+              />
+              <details class="manual-key">
+                <summary>Can’t scan? Enter this key manually</summary>
+                <code id="totpSecret"></code>
+              </details>
+              <label for="setupCode">Six-digit authenticator code</label>
+              <input
+                id="setupCode"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]{6}"
+                maxlength="6"
+                autocomplete="one-time-code"
+                required
+                disabled
+              />
+              <p class="field-note">
+                Use an authenticator such as Google Authenticator, Microsoft
+                Authenticator, or 2FAS. Setup expires after ten minutes.
+              </p>
+            </div>
+            <div id="recoveryFields" hidden>
+              <p>
+                Save these eight recovery codes in your password manager. Each
+                works once, together with your password, if you lose your
+                authenticator.
+              </p>
+              <pre id="recoveryCodes" class="recovery-codes"></pre>
+              <p class="field-note">
+                These codes are shown only now. They are not emailed to you.
+              </p>
+              <button class="primary" id="savedRecovery" type="button">
+                I’ve saved my recovery codes
+              </button>
+            </div>
+            <p id="loginError" class="error-message" role="alert" hidden></p>
+            <p id="loginNotice" role="status" hidden></p>
+            <button class="primary" type="submit" id="connectButton" disabled>
+              Continue
+            </button>
+            <button class="quiet-action" type="button" id="restartSetup" hidden>
+              Start setup again
+            </button>
+            <button class="quiet-action" type="button" id="forgotPassword" hidden>
+              Forgot password?
+            </button>
+            <button class="quiet-action" type="button" id="backToLogin" hidden>
+              Back to sign in
+            </button>
+          </form>
+        </section>
+        <section
+          id="inboxView"
+          class="inbox-view"
+          hidden
+          aria-labelledby="inboxHeading"
+        >
+          <div class="queue-pane">
+            <div class="queue-heading">
+              <div>
+                <h1 id="inboxHeading">
+                  Needs you <span id="waitingCount" class="count">0</span>
+                </h1>
+                <p>A few decisions, then back to your day.</p>
+              </div>
+              <button
+                class="icon-button"
+                id="refresh"
+                aria-label="Refresh requests"
+                title="Refresh requests"
+              >
+                <span data-icon="refresh"></span>
+              </button>
+            </div>
+            <div class="filters" role="group" aria-label="Filter by agent">
+              <button data-filter="all" class="selected" aria-pressed="true">
+                All <span id="allCount">0</span>
+              </button>
+              <button data-filter="claude" aria-pressed="false">
+                Claude <span id="claudeCount">0</span>
+              </button>
+              <button data-filter="codex" aria-pressed="false">
+                Codex <span id="codexCount">0</span>
+              </button>
+            </div>
+            <p id="inboxError" class="inbox-error" role="status" hidden></p>
+            <div id="queue" class="queue"></div>
+            <div id="empty" class="empty-state" hidden>
+              <span data-icon="inbox"></span>
+              <h2>Nothing needs you right now</h2>
+              <p>
+                Requests appear here when an agent asks for input. Your computer
+                must stay online.
+              </p>
+            </div>
+          </div>
+          <div class="detail-pane" id="desktopDetail"></div>
+        </section>
+        <section id="sessionsView" class="sessions-view" hidden aria-labelledby="sessionsHeading">
+          <div class="queue-heading">
+            <div>
+              <h1 id="sessionsHeading">Your terminals</h1>
+              <p>See where each agent is working and read its latest response.</p>
+            </div>
+            <button class="icon-button" id="refreshSessions" aria-label="Refresh terminals" title="Refresh terminals"><span data-icon="refresh"></span></button>
+          </div>
+          <div class="session-providers" role="group" aria-label="Agent provider"><button type="button" data-session-provider="claude" aria-pressed="true">Claude Code</button><button type="button" data-session-provider="codex" aria-pressed="false">Codex</button></div>
+          <div class="session-toolbar">
+            <p id="sessionCount" role="status">Loading terminals…</p>
+            <div><label for="sessionFilter">Show</label><select id="sessionFilter">
+              <option value="live">Live terminals</option><option value="all">History / background</option><option value="waiting">Waiting for you</option>
+            </select></div>
+          </div>
+          <p id="sessionsError" class="inbox-error" role="status" hidden></p>
+          <p id="sessionsEmpty" class="sessions-empty" hidden>No sessions reported yet. The Mac monitor needs to be connected before terminals appear here.</p>
+          <div id="sessionList" class="session-list"></div>
+          <p class="field-note">“Response ready” means the agent finished a response, not necessarily the whole task. If your Mac stops reporting, the last known status is shown as offline.</p>
+        </section>
+        <section
+          id="connectionView"
+          class="connection-view"
+          hidden
+          aria-labelledby="connectionHeading"
+        >
+          <h1 id="connectionHeading">Your connection</h1>
+          <p class="lede">
+            Keep the inbox close. Let notifications bring you back.
+          </p>
+          <section class="settings-section">
+            <h2>This device</h2>
+            <p id="deviceStatus">Checking server connection…</p>
+            <button class="secondary" id="disconnect">Sign out</button>
+            <p class="field-note">
+              Ends this session and disables notifications on this browser.
+            </p>
+          </section>
+          <section class="settings-section">
+            <h2>Phone notifications</h2>
+            <p id="pushStatus" role="status">
+              Enable alerts here to hear when your agent needs you, even with
+              AgentPulse closed.
+            </p>
+            <div class="push-actions">
+              <button class="secondary" id="pushSetup">
+                Enable notifications
+              </button>
+              <button class="secondary" id="pushTest" hidden>
+                Send test notification
+              </button>
+              <button class="quiet-action" id="pushDisable" hidden>
+                Disable on this device
+              </button>
+            </div>
+            <p class="field-note">
+              Notification previews contain no questions or commands. Open
+              AgentPulse to review them after signing in. Your phone and
+              computer must be online.
+            </p>
+          </section>
+          <section class="settings-section">
+            <h2>Keep it on your home screen</h2>
+            <p>
+              On iPhone, open the Share menu and choose Add to Home Screen. On
+              Android, choose Install app or Add to Home screen in your browser
+              menu.
+            </p>
+            <p class="field-note">
+              Decisions require a live connection. Expired requests stay on your
+              computer.
+            </p>
+          </section>
+        </section>
+      </main>
+      <footer class="app-footer" id="appFooter" hidden>
+        <span data-icon="shield"></span
+        ><span>Only your decision goes back to the waiting session.</span>
+      </footer>
+    </div>
+    <div id="announcement" class="toast" role="status" hidden></div>
+    <noscript
+      ><p class="noscript">
+        AgentPulse needs JavaScript to connect to your private inbox.
+      </p></noscript
+    >
+    <script type="module" src="/app.js?v=questions-1"></script>
+  </body>
+</html>

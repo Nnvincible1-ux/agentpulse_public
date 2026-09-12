@@ -1,0 +1,33 @@
+{
+  "description": "AgentPulse Codex interactions",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/session_start.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\scripts\\session_start.py\"",
+            "timeout": 3,
+            "additionalContextLimit": 1200
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/scripts/permission_hook.py\"",
+            "commandWindows": "py -3 \"%PLUGIN_ROOT%\\scripts\\permission_hook.py\"",
+            "timeout": 2147483,
+            "statusMessage": "Waiting for AgentPulse or this computer"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+.env
+data/state.json
+data/vapid.json
+.DS_Store
+__pycache__/
+*.pyc
