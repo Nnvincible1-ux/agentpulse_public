@@ -8,6 +8,13 @@ import install_claude_channel as installer
 
 
 class ClaudeChannelInstallerTests(unittest.TestCase):
+    def test_managed_shell_default_is_idempotent_and_removable(self):
+        original='export EDITOR=vim\n'
+        added=installer.add_shell_default(original,Path('/Users/test/.local/bin/claude'))
+        self.assertIn("/Users/test/.local/bin/claude --dangerously-load-development-channels server:agentpulse",added)
+        self.assertEqual(installer.add_shell_default(added,Path('/Users/test/.local/bin/claude')),added)
+        self.assertEqual(installer.remove_shell_default(added),original)
+
     def test_add_and_remove_preserve_unrelated_configuration(self):
         original={'theme':'dark','mcpServers':{'other':{'type':'stdio','command':'other'}}}
         added=installer.add_server(original,Path('/usr/local/bin/node'),Path('/opt/agentpulse/claude-channel/agentpulse-channel.mjs'))
@@ -33,6 +40,18 @@ class ClaudeChannelInstallerTests(unittest.TestCase):
             first=config.read_text();installer.install(home=home,node_path=node,script=script,stamp='20260912-120001',runner=runner)
             self.assertEqual(config.read_text(),first)
 
+    def test_install_can_make_channel_the_default_for_new_zsh_sessions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home=Path(directory);node=home/'node';script=home/'agentpulse-channel.mjs';claude=home/'bin'/'claude'
+            node.write_text('');node.chmod(0o700);script.write_text('export {};');script.chmod(0o600)
+            claude.parent.mkdir();claude.write_text('');claude.chmod(0o700)
+            runner=Mock(return_value=Mock(stdout='v22.12.0'))
+            installer.install(home=home,node_path=node,script=script,stamp='20260912-120000',runner=runner,shell_default=True,claude_path=claude)
+            shell=(home/'.zshrc').read_text()
+            self.assertIn(str(claude),shell)
+            installer.uninstall(home=home,stamp='20260912-120001')
+            self.assertEqual((home/'.zshrc').read_text(),'')
+
     def test_install_rejects_symlink_old_node_and_missing_script(self):
         with tempfile.TemporaryDirectory() as directory:
             home=Path(directory);target=home/'target';target.write_text('{}');(home/'.claude.json').symlink_to(target)
@@ -45,6 +64,15 @@ class ClaudeChannelInstallerTests(unittest.TestCase):
             script.unlink()
             with self.assertRaisesRegex(ValueError,'Channel script'):
                 installer.install(home=home,node_path=node,script=script,runner=Mock(return_value=Mock(stdout='v22.0.0')))
+
+    def test_shell_default_validation_does_not_partially_change_claude_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home=Path(directory);config=home/'.claude.json';node=home/'node';script=home/'channel.mjs'
+            config.write_text(json.dumps({'keep':True}));config.chmod(0o600)
+            node.write_text('');node.chmod(0o700);script.write_text('');script.chmod(0o600)
+            with self.assertRaisesRegex(ValueError,'Claude Code executable'):
+                installer.install(home=home,node_path=node,script=script,runner=Mock(return_value=Mock(stdout='v22.0.0')),shell_default=True,claude_path=home/'missing')
+            self.assertEqual(json.loads(config.read_text()),{'keep':True})
 
     def test_uninstall_removes_only_agentpulse(self):
         with tempfile.TemporaryDirectory() as directory:

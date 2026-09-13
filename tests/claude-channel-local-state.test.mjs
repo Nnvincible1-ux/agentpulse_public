@@ -41,7 +41,7 @@ test('matches only the exact live Claude ancestor and process identity',()=>{
   const processes=new Map([
     [50,{pid:50,ppid:45,command:'node',started:'child'}],
     [45,{pid:45,ppid:40,command:'helper',started:'helper'}],
-    [40,{pid:40,ppid:1,command:'/usr/local/bin/claude',started:'start-1'}],
+    [40,{pid:40,ppid:1,command:'/usr/local/bin/claude',arguments:'/usr/local/bin/claude --dangerously-load-development-channels server:agentpulse',started:'start-1'}],
   ]);
   const sessions=[{id:'session-1',provider:'claude',pid:40,status:'working',processStarted:'start-1'}];
   assert.equal(findClaudeSession({pid:50,processes,sessions}).id,'session-1');
@@ -49,6 +49,17 @@ test('matches only the exact live Claude ancestor and process identity',()=>{
   assert.equal(findClaudeSession({pid:50,processes,sessions:[{...sessions[0],status:'closed'}]}),null);
   assert.equal(findClaudeSession({pid:50,processes,sessions:[{...sessions[0],processStarted:'other'}]}),null);
   assert.equal(findClaudeSession({pid:99,processes,sessions}),null);
+});
+
+test('rejects a Claude MCP subprocess when its parent session did not opt in to the AgentPulse channel',()=>{
+  const sessions=[{id:'session-1',provider:'claude',pid:40,status:'idle',processStarted:'start-1'}];
+  const process=(arguments_)=>new Map([
+    [50,{pid:50,ppid:40,command:'node',arguments:'node agentpulse-channel.mjs',started:'child'}],
+    [40,{pid:40,ppid:1,command:'/usr/local/bin/claude',arguments:arguments_,started:'start-1'}],
+  ]);
+  assert.equal(findClaudeSession({pid:50,processes:process('/usr/local/bin/claude'),sessions}),null);
+  assert.equal(findClaudeSession({pid:50,processes:process('/usr/local/bin/claude --dangerously-load-development-channels server:other'),sessions}),null);
+  assert.equal(findClaudeSession({pid:50,processes:process('/usr/local/bin/claude --dangerously-load-development-channels server:agentpulse'),sessions}).id,'session-1');
 });
 
 test('presence markers are private and only their writer removes them',t=>{

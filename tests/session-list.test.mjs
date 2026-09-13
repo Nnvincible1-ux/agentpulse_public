@@ -49,7 +49,7 @@ test('current channel instruction and delivery labels are explicit',()=>{
  assert.equal(activeChannelMessage(messages).id,'current');
  assert.equal(channelStatusText('queued'),'Queued on AgentPulse');
  assert.equal(channelStatusText('claimed'),'Delivering to Claude Code');
- assert.equal(channelStatusText('delivered'),'Sent to Claude Code');
+ assert.equal(channelStatusText('delivered'),'Handed to Claude Channel — processing not confirmed');
  assert.equal(channelStatusText('working'),'Claude is working');
  assert.equal(channelStatusText('completed'),'Response ready');
  assert.match(channelStatusText('expired'),/could not be confirmed/);

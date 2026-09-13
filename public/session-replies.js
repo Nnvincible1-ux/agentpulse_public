@@ -4,7 +4,7 @@ const drafts=new Map();
 const key=session=>`${session.machineId}:${session.id}`;
 const activeStatuses=new Set(['queued','claimed','delivered','working']);
 const channelLabels={
-  queued:'Queued on AgentPulse',claimed:'Delivering to Claude Code',delivered:'Sent to Claude Code',
+  queued:'Queued on AgentPulse',claimed:'Delivering to Claude Code',delivered:'Handed to Claude Channel — processing not confirmed',
   working:'Claude is working',completed:'Response ready',cancelled:'Cancelled',
   expired:'Delivery could not be confirmed — check Claude before sending again',
 };
@@ -43,7 +43,7 @@ export function replyComposer(session,rerender){
   else if(!session.tty||session.tty==='??'||session.tty==='?')noteText='This app/background process is status-only. Send messages from a Claude Code session running in a terminal.';
   else if(!session.online)noteText='The Mac is offline. Reconnect it before sending.';
   else if(session.provider==='claude'&&channel.enabled&&channel.lastHeartbeat)noteText='AgentPulse Channel is reconnecting or closed. Wait for a fresh status; if it stays disconnected, start a new Claude session.';
-  else if(session.provider==='claude'&&channel.enabled)noteText='This Claude session was not started with AgentPulse Channel. Start a new Claude session with the configured Channel.';
+  else if(session.provider==='claude'&&channel.enabled)noteText='This Claude session was not started with AgentPulse Channel. Restart it with: claude --dangerously-load-development-channels server:agentpulse';
   else if(session.status==='waiting')noteText='Answer the pending request in Inbox first.';
   else noteText='No continuation channel is open. Start or resume the session on your computer with the updated hooks.';
   const note=el('p','field-note',noteText);note.id=input.id+'-note';input.setAttribute('aria-describedby',note.id);
