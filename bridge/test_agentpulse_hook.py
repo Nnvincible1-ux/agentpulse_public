@@ -109,6 +109,42 @@ class HookTests(unittest.TestCase):
             "Which environments?": "Test, Production",
         })
 
+    def test_completed_question_reports_the_same_private_correlation_key(self):
+        questions = [{
+            "question": "Which colour?", "header": "Colour", "multiSelect": False,
+            "options": [{"label": "Blue"}, {"label": "Green"}],
+        }]
+        permission = {"session_id": "session-1", "tool_input": {"questions": questions}}
+        completed = {"session_id": "session-1", "tool_input": {
+            "questions": questions,
+            "answers": {"Which colour?": "Blue"},
+        }}
+        self.assertEqual(hook.question_key(permission), hook.question_key(completed))
+
+    def test_post_tool_question_completion_removes_the_matching_inbox_request(self):
+        event = {
+            "hook_event_name": "PostToolUse",
+            "session_id": "session-1",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [{
+                "question": "Which colour?", "header": "Colour", "multiSelect": False,
+                "options": [{"label": "Blue"}, {"label": "Green"}],
+            }]},
+        }
+        with patch.object(sys, "argv", ["hook", "claude", "complete-question"]), \
+             patch.object(sys, "stdin", io.StringIO(json.dumps(event))), \
+             patch.object(hook, "SERVER", "http://localhost"), \
+             patch.object(hook, "TOKEN", "test-only"), \
+             patch.object(hook, "request_json", return_value={"ok": True, "removed": 1}) as request:
+            self.assertEqual(hook.main(), 0)
+        request.assert_called_once()
+        method, url, payload = request.call_args.args
+        self.assertEqual(method, "POST")
+        self.assertEqual(url, "http://localhost/api/bridge/requests/complete")
+        self.assertEqual(payload["provider"], "claude")
+        self.assertEqual(payload["sessionId"], "session-1")
+        self.assertRegex(payload["questionKey"], r"^[a-f0-9]{64}$")
+
     def test_permission_question_denial_and_leave_use_permission_contract(self):
         _, result = self.permission_question({"action": "deny"})
         self.assertEqual(result["hookSpecificOutput"]["decision"]["behavior"], "deny")
@@ -138,6 +174,11 @@ class HookTests(unittest.TestCase):
             data = json.loads(settings.read_text())
             self.assertEqual(data["hooks"]["PreToolUse"], [unrelated])
             self.assertEqual(len(data["hooks"]["PermissionRequest"]), 1)
+            self.assertEqual(len(data["hooks"]["PostToolUse"]), 1)
+            cleanup = data["hooks"]["PostToolUse"][0]
+            self.assertEqual(cleanup["matcher"], "AskUserQuestion")
+            self.assertTrue(cleanup["hooks"][0]["async"])
+            self.assertIn("claude-question-complete", cleanup["hooks"][0]["command"])
             self.assertTrue(list(Path(directory).glob("settings.json.agentpulse-backup-*")))
 
     def test_question_normalizes_explicit_recommendation(self):

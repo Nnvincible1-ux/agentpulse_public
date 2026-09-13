@@ -145,6 +145,7 @@ The installer backs up `~/.claude/settings.json`, preserves unrelated hooks,
 and adds:
 
 - `PermissionRequest` for questions and permissions. `AskUserQuestion` is shown as choices and the selected answer is returned in `decision.updatedInput`.
+- `PostToolUse` for `AskUserQuestion`, which removes the matching Inbox card when you answer directly in Claude Code.
 - Installing again removes the older AgentPulse `PreToolUse` question hook to avoid duplicate requests.
 
 Start a **new Claude Code session** afterwards.

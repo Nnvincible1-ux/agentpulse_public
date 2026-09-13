@@ -101,13 +101,20 @@ class LocalConnectionTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             launcher = bridge / 'local_connection.py'
             shutil.copyfile(Path(__file__).with_name('local_connection.py'), launcher)
-            check = "import os\nassert os.environ['AGENTPULSE_BRIDGE_TOKEN'] == 'synthetic-test-credential'\nassert os.environ['AGENTPULSE_SERVER'] == 'https://pulse.example.com'\nprint('credentials-loaded')\n"
+            check = "import json, os, sys\nassert os.environ['AGENTPULSE_BRIDGE_TOKEN'] == 'synthetic-test-credential'\nassert os.environ['AGENTPULSE_SERVER'] == 'https://pulse.example.com'\nassert sys.argv[1:] == json.loads(os.environ['EXPECTED_ARGUMENTS'])\nprint('credentials-loaded')\n"
             for target in [bridge / 'agentpulse_hook.py', scripts / 'permission_hook.py', scripts / 'mcp_server.py']:
                 target.write_text(check)
             module.save_connection(home / '.config' / 'agentpulse' / 'connection.json', SERVER, 'synthetic-test-credential')
             env = {k: v for k, v in os.environ.items() if not k.startswith('AGENTPULSE_')}
             env['HOME'] = str(home)
-            for mode in ['claude', 'codex-permission', 'codex-question']:
+            modes = {
+                'claude': ['claude', 'permission'],
+                'claude-question-complete': ['claude', 'complete-question'],
+                'codex-permission': [],
+                'codex-question': [],
+            }
+            for mode, arguments in modes.items():
+                env['EXPECTED_ARGUMENTS'] = json.dumps(arguments)
                 result = subprocess.run(['/usr/bin/python3', '-B', str(launcher), mode], capture_output=True, text=True, env=env)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), 'credentials-loaded')

@@ -142,11 +142,12 @@ def main():
         return 0
     targets = {
         'claude': (ROOT / 'bridge' / 'agentpulse_hook.py', ['claude', 'permission']),
+        'claude-question-complete': (ROOT / 'bridge' / 'agentpulse_hook.py', ['claude', 'complete-question']),
         'codex-permission': (ROOT / 'codex-plugin' / 'scripts' / 'permission_hook.py', []),
         'codex-question': (ROOT / 'codex-plugin' / 'scripts' / 'mcp_server.py', []),
     }
     if mode not in targets:
-        raise ValueError('Usage: local_connection.py configure|claude|codex-permission|codex-question')
+        raise ValueError('Usage: local_connection.py configure|claude|claude-question-complete|codex-permission|codex-question')
     os.environ.update(load_connection())
     if not os.environ.get('AGENTPULSE_SERVER') or not os.environ.get('AGENTPULSE_BRIDGE_TOKEN'):
         print('AgentPulse: server or bridge token missing. Run local_connection.py configure.', file=sys.stderr)

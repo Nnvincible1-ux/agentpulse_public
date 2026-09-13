@@ -26,6 +26,18 @@ def hook_entry(kind: str):
     }
 
 
+def completion_entry():
+    return {
+        "matcher": "AskUserQuestion",
+        "hooks": [{
+            "type": "command",
+            "command": f'python3 "{HOOK}" claude-question-complete',
+            "timeout": 10,
+            "async": True,
+        }],
+    }
+
+
 def is_agentpulse_entry(value):
     if not isinstance(value, dict):
         return False
@@ -58,7 +70,8 @@ def main():
     if not isinstance(hooks, dict):
         raise SystemExit("Claude settings 'hooks' must be an object")
 
-    for event, kind in (("PreToolUse", "question"), ("PermissionRequest", "permission")):
+    for event, kind in (("PreToolUse", "question"), ("PermissionRequest", "permission"),
+                        ("PostToolUse", "complete-question")):
         existing = hooks.get(event, [])
         if not isinstance(existing, list):
             raise SystemExit(f"Claude settings hooks.{event} must be an array")
@@ -67,6 +80,8 @@ def main():
         # PreToolUse entry so an unanswered question cannot create two requests.
         if args.action == "install" and event == "PermissionRequest":
             existing.append(hook_entry(kind))
+        elif args.action == "install" and event == "PostToolUse":
+            existing.append(completion_entry())
         if existing:
             hooks[event] = existing
         else:

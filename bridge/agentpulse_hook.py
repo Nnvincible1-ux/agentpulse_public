@@ -69,6 +69,15 @@ def explicit_recommended(label):
     return isinstance(label, str) and label.strip().lower().endswith("(recommended)")
 
 
+def question_key(event):
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list) or not questions:
+        return ""
+    canonical = json.dumps(questions, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def safe_permission(tool_name, tool_input):
     if ALLOW_MUTATING:
         return True
@@ -146,6 +155,7 @@ def normalize(provider, kind, event):
             # Keep the original single-question fields for older servers and clients.
             "options": [] if sensitive or len(normalized_questions) != 1 else first["options"],
             "recommendedIndex": None if sensitive or len(normalized_questions) != 1 or not first["recommendedIndexes"] else first["recommendedIndexes"][0],
+            "questionKey": question_key(event),
         })
         return base
 
@@ -313,7 +323,7 @@ def response_for(kind, event, verdict):
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] not in {"claude", "codex"} or sys.argv[2] not in {"question", "permission"}:
+    if len(sys.argv) != 3 or sys.argv[1] not in {"claude", "codex"} or sys.argv[2] not in {"question", "permission", "complete-question"}:
         return 2
     if not SERVER or not TOKEN:
         return 0
@@ -322,6 +332,16 @@ def main():
         if not isinstance(event, dict):
             return 0
         provider, kind = sys.argv[1:]
+        if kind == "complete-question":
+            session_id = clean(event.get("session_id"), 256)
+            correlation = question_key(event)
+            if provider == "claude" and event.get("tool_name") == "AskUserQuestion" and session_id and correlation:
+                request_json("POST", f"{SERVER}/api/bridge/requests/complete", {
+                    "provider": provider,
+                    "sessionId": session_id,
+                    "questionKey": correlation,
+                }, timeout=8)
+            return 0
         permission_question = (
             provider == "claude" and kind == "permission"
             and event.get("tool_name") == "AskUserQuestion"

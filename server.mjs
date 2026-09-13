@@ -91,6 +91,7 @@ setInterval(cleanup, 15000).unref();
 function normalizeRequest(input) {
   if (input?.requestId != null && (typeof input.requestId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(input.requestId) || ['__proto__','constructor','prototype'].includes(input.requestId))) throw fail(400,'invalid_request_id');
   if (!input || !['claude', 'codex'].includes(input.provider) || !['question', 'permission'].includes(input.kind)) throw fail(400,'invalid_request');
+  if (input.questionKey != null && (input.kind !== 'question' || typeof input.questionKey !== 'string' || !/^[a-f0-9]{64}$/.test(input.questionKey))) throw fail(400,'invalid_question_key');
   if (typeof input.detail === 'string' && input.detail.length > 65536) throw fail(400,'request_detail_too_long');
   const duration = input.lease === true && Number.isInteger(input.waitSeconds) ? Math.max(15, Math.min(3600, input.waitSeconds)) : TTL_SECONDS;
   const options = Array.isArray(input.options) ? input.options.slice(0, 8).map((o, index) => ({
@@ -133,7 +134,7 @@ function normalizeRequest(input) {
     lease: input.lease === true, continuous: input.lease === true && input.continuous === true, receiverSeenAt: Date.now(), receiverSavedAt: Date.now(), receiverUntil: input.lease === true ? Date.now() + 30000 : null,
     title: String(input.title || '').slice(0, 400), detail: String(input.detail || ''),
     tool: String(input.tool || '').slice(0, 120), canApprove: input.canApprove === true, hidden: input.hidden === true,
-    options, recommendedIndex, questions,
+    options, recommendedIndex, questions, questionKey:input.kind === 'question' ? input.questionKey || '' : '',
     createdAt: nowIso(), expiresAt: input.lease === true && input.continuous === true ? null : new Date(Date.now() + duration * 1000).toISOString(),
     status: 'pending', verdict: null
   };
@@ -250,6 +251,19 @@ const server = http.createServer(async (req, res) => {
         state.requests[item.id] = item; saveJson(statePath,state);
         void push.notify(item).catch(()=>console.error('Notification delivery failed.'));
         return json(res,201,{id:item.id,expiresAt:item.expiresAt,detailDigest:crypto.createHash('sha256').update(item.detail).digest('hex')});
+      }
+      if (req.method === 'POST' && p === '/api/bridge/requests/complete') {
+        const body=await readBody(req,8192);
+        if(body.provider!=='claude' || typeof body.sessionId!=='string' || !/^[A-Za-z0-9_-]{1,256}$/.test(body.sessionId) ||
+            typeof body.questionKey!=='string' || !/^[a-f0-9]{64}$/.test(body.questionKey)) throw fail(400,'invalid_question_completion');
+        let removed=0;
+        for(const [id,item] of Object.entries(state.requests)){
+          if(item?.provider===body.provider && item.kind==='question' && item.sessionId===body.sessionId && item.questionKey===body.questionKey){
+            delete state.requests[id];removed++;
+          }
+        }
+        if(removed)saveJson(statePath,state);
+        return json(res,200,{ok:true,removed});
       }
       const cancelled = p.match(/^\/api\/bridge\/requests\/([^/]+)$/);
       if (req.method === 'DELETE' && cancelled) {

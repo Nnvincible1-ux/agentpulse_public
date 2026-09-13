@@ -146,6 +146,41 @@ test('one request carries two Claude questions and requires every answer', async
   ]);
 });
 
+test('a locally completed Claude question disappears from the mobile inbox', async () => {
+  const questionKey = 'a'.repeat(64);
+  const create = await api('/api/bridge/requests', bridgeToken, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ requestId: 'local-answer', provider: 'claude', kind: 'question',
+      project: 'demo', title: 'Local answer cleanup', detail: 'Which colour?', canApprove: true,
+      questionKey, sessionId: 'claude-session-1', lease: true, continuous: true,
+      questions: [{ question: 'Which colour?', header: 'Colour', multiSelect: false,
+        options: [{ label: 'Blue', description: '', recommended: false }], recommendedIndexes: [] }] }),
+  });
+  assert.equal(create.status, 201);
+  const other = await api('/api/bridge/requests', bridgeToken, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ requestId: 'other-local-answer', provider: 'claude', kind: 'question',
+      project: 'demo', title: 'Other local answer', detail: 'Other question?', canApprove: true,
+      questionKey: 'b'.repeat(64), sessionId: 'claude-session-1', lease: true, continuous: true,
+      questions: [{ question: 'Other question?', header: 'Other', multiSelect: false,
+        options: [{ label: 'Keep', description: '', recommended: false }], recommendedIndexes: [] }] }),
+  });
+  assert.equal(other.status, 201);
+
+  const complete = await api('/api/bridge/requests/complete', bridgeToken, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: 'claude', sessionId: 'claude-session-1', questionKey }),
+  });
+  assert.equal(complete.status, 200);
+  assert.deepEqual(await complete.json(), { ok: true, removed: 1 });
+
+  const listed = await (await api('/api/mobile/requests', mobileToken)).json();
+  assert.equal(listed.requests.some(request => request.id === 'local-answer'), false);
+  assert.equal(listed.requests.some(request => request.id === 'other-local-answer'), true);
+  const cleanup = await api('/api/bridge/requests/other-local-answer', bridgeToken, { method: 'DELETE' });
+  assert.equal(cleanup.status, 200);
+});
+
 test('mobile API rejects the bridge token', async () => {
   const r = await api('/api/mobile/requests', bridgeToken);
   assert.equal(r.status, 401);
