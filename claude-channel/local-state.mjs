@@ -66,7 +66,18 @@ export function parseProcesses(raw) {
 }
 
 export function readProcesses() {
-  return parseProcesses(execFileSync('/bin/ps',['-axo','pid=,ppid=,lstart=,comm='],{encoding:'utf8',timeout:3000}));
+  const processes=parseProcesses(execFileSync('/bin/ps',['-axo','pid=,ppid=,lstart=,comm='],{encoding:'utf8',timeout:3000}));
+  const argumentsRaw=execFileSync('/bin/ps',['-axo','pid=,args='],{encoding:'utf8',timeout:3000});
+  for(const line of argumentsRaw.split('\n')) {
+    const match=line.match(/^\s*(\d+)\s+(.+?)\s*$/);
+    if(match&&processes.has(Number(match[1])))processes.get(Number(match[1])).arguments=match[2];
+  }
+  return processes;
+}
+
+export function claudeChannelOptedIn(process) {
+  const args=process?.arguments;
+  return typeof args==='string'&&/(?:^|\s)--dangerously-load-development-channels(?:=|\s+)server:agentpulse(?=\s|$)/.test(args);
 }
 
 export function findClaudeSession({pid=process.pid,processes,sessions}) {
@@ -77,7 +88,7 @@ export function findClaudeSession({pid=process.pid,processes,sessions}) {
     if(path.basename(row.command).toLowerCase()==='claude'){claude=row;break;}
     current=row.ppid;
   }
-  if(!claude)return null;
+  if(!claude||!claudeChannelOptedIn(claude))return null;
   return sessions.find(session=>session?.provider==='claude'&&session.pid===claude.pid&&session.status!=='closed'&&
     validId(session.id)&&(!session.processStarted||session.processStarted===claude.started))||null;
 }

@@ -174,13 +174,13 @@ Roll out the Channel in this order:
    configured, then run:
 
    ```bash
-   python3 bridge/install_claude_channel.py install
+   python3 bridge/install_claude_channel.py install --shell-default
    ```
 
-4. Start each new opted-in Claude Code session with:
+4. Open a new terminal and start Claude Code normally:
 
    ```bash
-   claude --dangerously-load-development-channels server:agentpulse
+   claude
    ```
 
 5. Review Claude's MCP and Channel trust prompt. Open the session in AgentPulse,
@@ -190,9 +190,14 @@ Custom channels are a Claude Code research-preview feature. The scoped
 `--dangerously-load-development-channels server:agentpulse` flag permits the
 configured `agentpulse` server to provide a development Channel; it does not
 approve shell commands, change permanent permission rules, or grant other MCP
-servers trust. The installer edits only `mcpServers.agentpulse` in
-`~/.claude.json`, backs up the existing file, and stores no bridge token there.
-It uses the existing private mode-0600 AgentPulse connection file.
+servers trust. With `--shell-default`, the installer also adds a clearly marked
+function to `~/.zshrc` so ordinary `claude` starts opt in to
+`server:agentpulse`; it backs up the file first and removes only that marked
+block on uninstall. Without the option, use
+`claude --dangerously-load-development-channels server:agentpulse` for every
+Channel-enabled session. The installer edits only `mcpServers.agentpulse` in
+`~/.claude.json` and stores no bridge token there. It uses the existing private
+mode-0600 AgentPulse connection file.
 
 To remove only the Channel registration:
 
