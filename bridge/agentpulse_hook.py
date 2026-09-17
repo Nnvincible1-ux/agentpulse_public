@@ -183,16 +183,59 @@ def normalize(provider, kind, event):
     return base
 
 
-def terminal_context(provider):
+def session_monitor():
     try:
         bridge = Path(__file__).resolve().parents[2] / 'bridge' if 'codex-plugin' in str(Path(__file__)) else Path(__file__).resolve().parent
-        sys.path.insert(0, str(bridge))
-        from session_monitor import ancestor, processes, read_private, ROOT
-        process = ancestor(provider, processes())
-        machine = read_private(ROOT / 'machine.json', {})
+        if str(bridge) not in sys.path:
+            sys.path.insert(0, str(bridge))
+        import session_monitor as monitor
+        return monitor
+    except Exception:
+        return None
+
+
+def terminal_context(provider):
+    try:
+        monitor = session_monitor()
+        process = monitor.ancestor(provider, monitor.processes())
+        machine = monitor.read_private(monitor.ROOT / 'machine.json', {})
         return (process if process and process.get('tty') not in (None, '', '??', '?') else None), machine.get('id', '')
     except Exception:
         return False, ''
+
+
+def local_prompt_watch(provider, session_id, started):
+    """Detect an answer given at the computer through the private session registry.
+
+    Claude Code does not stop PermissionRequest hooks when the prompt is answered
+    in the terminal, so the remote card would otherwise stay live for the whole
+    session. The monitor records the prompt as 'waiting'; any later session event
+    means the terminal moved past it. Nothing here reads prompts or transcripts.
+    """
+    monitor = session_monitor()
+    if monitor is None or not isinstance(session_id, str) or not session_id:
+        return lambda: False
+    identifier = hashlib.sha256((provider + ':' + session_id).encode()).hexdigest()[:32]
+    seen = {'waitingAt': None}
+
+    def resolved():
+        try:
+            rows = monitor.read_private(monitor.ROOT / 'sessions.json', [])
+        except Exception:
+            return False
+        row = next((s for s in rows if isinstance(s, dict) and s.get('id') == identifier), None)
+        updated = row.get('updatedAt') if row else None
+        if not isinstance(updated, int):
+            return False
+        if seen['waitingAt'] is None:
+            # Wait for this prompt's own 'waiting' record before trusting later
+            # events; a tool event logged just before the prompt is not an answer.
+            if row.get('status') == 'waiting' and updated >= started - 5000:
+                seen['waitingAt'] = updated
+            return False
+        return updated > seen['waitingAt']
+
+    return resolved
 
 
 def terminal_alive(process):
@@ -350,7 +393,9 @@ def main():
         payload = normalize(provider, request_kind, event)
         if payload is None:
             return 0
+        started = int(time.time() * 1000)
         interactive, machine_id = terminal_context(provider)
+        answered_locally = local_prompt_watch(provider, payload.get("sessionId", ""), started)
         duration = 0 if interactive else TIMEOUT_SECONDS
         payload.update({"lease": True, "continuous": bool(interactive), "waitSeconds": duration, "machineId": machine_id})
         created = request_json("POST", f"{SERVER}/api/bridge/requests", payload, timeout=10)
@@ -361,7 +406,7 @@ def main():
             # Older servers truncate details. Never approve a different displayed command.
             request_json('DELETE', f'{SERVER}/api/bridge/requests/{urllib.parse.quote(request_id, safe="")}', timeout=3)
             return 0
-        verdict = wait_for_verdict(request_id, duration, current=(lambda: terminal_alive(interactive)) if interactive else None)
+        verdict = wait_for_verdict(request_id, duration, current=lambda: (not interactive or terminal_alive(interactive)) and not answered_locally())
         output = response_for(request_kind, event, verdict)
         if permission_question and output is not None:
             question_output = output["hookSpecificOutput"]

@@ -41,6 +41,33 @@ class HookTests(unittest.TestCase):
             self.assertIsNone(hook.wait_for_verdict('synthetic', 3600, current=lambda:False))
         self.assertEqual(request.call_args.args[0], 'DELETE')
 
+    def test_local_answer_ends_the_wait_once_the_session_moves_past_the_prompt(self):
+        import session_monitor
+        started = 1_700_000_000_000
+        row = {'id': hashlib.sha256(b'claude:s1').hexdigest()[:32], 'status': 'working', 'updatedAt': started + 40}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(session_monitor, 'ROOT', Path(tmp)):
+            resolved = hook.local_prompt_watch('claude', 's1', started)
+            self.assertFalse(resolved())  # no registry yet
+            # A late PreToolUse write from just before the prompt must not count as an answer.
+            session_monitor.write_private(Path(tmp) / 'sessions.json', [row])
+            self.assertFalse(resolved())
+            session_monitor.write_private(Path(tmp) / 'sessions.json', [{**row, 'status': 'waiting', 'updatedAt': started + 80}])
+            self.assertFalse(resolved())
+            session_monitor.write_private(Path(tmp) / 'sessions.json', [{**row, 'status': 'working', 'updatedAt': started + 9000}])
+            self.assertTrue(resolved())
+        self.assertFalse(hook.local_prompt_watch('claude', '', started)())
+
+    def test_permission_wait_watches_for_a_local_answer(self):
+        event = {'session_id': 's1', 'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}, 'cwd': '/tmp/demo'}
+        with patch.object(sys, 'argv', ['hook', 'claude', 'permission']), patch.object(sys, 'stdin', io.StringIO(json.dumps(event))), \
+             patch.object(hook, 'SERVER', 'http://localhost'), patch.object(hook, 'TOKEN', 'test-only'), \
+             patch.object(hook, 'terminal_context', return_value=(None, '')), patch.object(hook, 'local_prompt_watch', return_value=lambda: True) as watch, \
+             patch.object(hook, 'request_json', side_effect=lambda method, url, payload=None, timeout=10: {'id': 'synthetic', 'detailDigest': hashlib.sha256(payload['detail'].encode()).hexdigest()}), \
+             patch.object(hook, 'wait_for_verdict', return_value=None) as wait:
+            hook.main()
+        self.assertEqual(watch.call_args.args[:2], ('claude', 's1'))
+        self.assertFalse(wait.call_args.kwargs['current']())
+
     def test_older_server_cannot_approve_a_truncated_display(self):
         event={'tool_name':'Bash','tool_input':{'command':'git status'}}
         output=io.StringIO()

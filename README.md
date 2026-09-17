@@ -146,6 +146,7 @@ and adds:
 
 - `PermissionRequest` for questions and permissions. `AskUserQuestion` is shown as choices and the selected answer is returned in `decision.updatedInput`.
 - `PostToolUse` for `AskUserQuestion`, which removes the matching Inbox card when you answer directly in Claude Code.
+- Permission cards answered directly in Claude Code are withdrawn as soon as the session monitor records the session moving past the prompt (within a few seconds). Claude Code does not stop the hook itself, so this needs the session monitor installed.
 - Installing again removes the older AgentPulse `PreToolUse` question hook to avoid duplicate requests.
 
 Start a **new Claude Code session** afterwards.
