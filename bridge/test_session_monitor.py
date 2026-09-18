@@ -51,6 +51,15 @@ class SessionMonitorTests(unittest.TestCase):
         self.assertEqual(rows[1]['status'], 'untracked')
         self.assertNotIn('processStarted', rows[0])
 
+    def test_snapshot_cap_keeps_tracked_terminals_over_untracked_helpers(self):
+        tracked = {'id': 'live', 'pid': 12, 'processStarted': 'new', 'status': 'working', 'updatedAt': 1999, 'tty': 'ttys003'}
+        rows = {12: {'pid': 12, 'ppid': 1, 'provider': 'claude', 'started': 'new', 'tty': 'ttys003'}}
+        rows.update({pid: {'pid': pid, 'ppid': 1, 'provider': 'claude', 'started': 'Mon Jan  1 00:00:00 2026', 'tty': '??'} for pid in range(100, 220)})
+        result = monitor.merge_sessions([tracked], rows, 2000, lambda pid: '/tmp/observer')
+        self.assertEqual(len(result), 100)
+        self.assertEqual(result[0]['id'], 'live')
+        self.assertTrue(all(row['status'] == 'untracked' for row in result[1:]))
+
     def test_private_state_is_atomic_and_permission_restricted(self):
         with tempfile.TemporaryDirectory() as d:
             file = Path(d) / 'state.json'

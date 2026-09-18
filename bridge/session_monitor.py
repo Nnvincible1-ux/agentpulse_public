@@ -205,7 +205,8 @@ def merge_sessions(registry, rows, now, cwd_lookup=process_cwd):
                        'cwd': text(cwd, 1024), 'pid': pid, 'tty': process['tty'], 'status': 'untracked',
                        'activity': '', 'summary': '', 'summaryHidden': False, 'eventId': '', 'turnStartedAt': 0,
                        'updatedAt': min(started_at, now)})
-    return result[-100:]
+    # Prefer tracked terminals over closed history and untracked helpers when the snapshot cap is reached.
+    return sorted(result, key=lambda row: (row['status'] in ('closed', 'untracked'), -row['updatedAt']))[:100]
 
 
 def snapshot():

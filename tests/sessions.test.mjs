@@ -73,3 +73,20 @@ test('closed sessions are never online even when the Mac still sends heartbeats'
  assert.equal(f.store.list()[0].summaryAt,1799999999000);
  assert.equal(f.store.list()[0].summaryTruncated,true);
 });
+
+test("the retention cap drops old closed records before live sessions", t => {
+  const f = fixture(t);
+  for (let batch = 0; batch < 10; batch++)
+    f.store.update(snapshot(Array.from({ length: 100 }, (_, i) => ({ ...session, id: "old-" + (batch * 100 + i), tty: "??", updatedAt: 1800000000000 - (batch * 100 + i) }))));
+  f.store.update(snapshot([]));
+  assert.equal(f.store.list().filter(s => s.status === "closed").length, 1000);
+  f.advance(1000);
+  const live = { ...session, id: "live-1", updatedAt: 1800000001000 };
+  f.store.update(snapshot([live]));
+  const rows = f.store.list();
+  assert.equal(rows.length, 1000);
+  assert.equal(rows[0].id, "live-1");
+  assert.equal(rows[0].online, true);
+  assert.equal(rows.filter(s => s.status === "closed").length, 999);
+  assert.equal(rows.some(s => s.id === "old-999"), false);
+});
