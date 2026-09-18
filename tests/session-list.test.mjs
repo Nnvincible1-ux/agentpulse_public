@@ -1,12 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isLiveTerminal,selectSessions,responseNote,responseExcerpt} from '../public/session-list.js';
+import {isLiveTerminal,selectSessions,responseNote,responseExcerpt,sessionPreview,age} from '../public/session-list.js';
 import {composerMode,activeChannelMessage,channelStatusText,channelIsStalled} from '../public/session-replies.js';
 const row={id:'one',machineId:'mac',provider:'claude',tty:'ttys001',online:true,status:'idle',updatedAt:100,summary:'Actual answer',summaryAt:80};
-test('live terminals exclude closed, offline and app/background processes',()=>{
+test('live terminals exclude closed, stale and app/background processes',()=>{
  assert.equal(isLiveTerminal(row),true);
  for(const update of [{status:'closed'},{online:false},{tty:'??'},{tty:''}])assert.equal(isLiveTerminal({...row,...update}),false);
  assert.equal(isLiveTerminal({...row,status:'untracked'}),true);
+});
+test('recently active terminals stay listed while the Mac is offline',()=>{
+ const now=24*3600000+1000;
+ assert.equal(isLiveTerminal({...row,online:false,updatedAt:now-3600000},now),true);
+ assert.equal(isLiveTerminal({...row,online:false,updatedAt:now-24*3600000},now),false);
+ assert.equal(isLiveTerminal({...row,online:false,status:'closed',updatedAt:now-1000},now),false);
+ assert.equal(isLiveTerminal({...row,online:false,tty:'??',updatedAt:now-1000},now),false);
+ assert.deepEqual(selectSessions([{...row,online:false,updatedAt:now-1000}],'claude','live',now).map(s=>s.id),['one']);
+ assert.equal(selectSessions([{...row,online:false,status:'waiting',updatedAt:now-1000}],'claude','waiting',now).length,0);
+});
+test('collapsed preview shows the current tool while working or waiting',()=>{
+ const now=100+12000;
+ assert.equal(sessionPreview({...row,status:'working',activity:'Bash',summary:'Done.\n\nNext: deploy.'},now),'Running Bash · 12 seconds ago\nNext: deploy.');
+ assert.equal(sessionPreview({...row,status:'working',activity:'UserPromptSubmit',summary:''},now),'Working · 12 seconds ago\nNo response captured yet');
+ assert.equal(sessionPreview({...row,status:'waiting',activity:'Bash',summary:'Done.'},now),'Waiting for you · Bash · 12 seconds ago\nDone.');
+ assert.equal(sessionPreview({...row,status:'idle',summary:'Done.'},now),'Done.');
+ assert.equal(age(now-90000,now),'1 minute ago');
 });
 test('providers remain separate and the newest real update wins over waiting status',()=>{
  const rows=[{...row,id:'old',status:'waiting'},{...row,id:'new',updatedAt:200},{...row,id:'codex',provider:'codex',updatedAt:300},{...row,id:'dead',status:'closed',updatedAt:500}];

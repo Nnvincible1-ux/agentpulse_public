@@ -1,4 +1,4 @@
-import {isLiveTerminal,selectSessions,responseNote,responseExcerpt} from './session-list.js';
+import {isLiveTerminal,selectSessions,responseNote,sessionPreview,age} from './session-list.js';
 import {requestsForSession} from './session-requests.js';
 import {replyComposer,clearReplyDrafts,activeChannelMessage,channelStatusText,channelIsStalled} from './session-replies.js';
 const $ = selector => document.querySelector(selector);
@@ -14,12 +14,6 @@ function element(tag, className, content) {
   if (content != null) el.textContent = content;
   return el;
 }
-function age(timestamp) {
-  const seconds=Math.max(0,Math.floor((Date.now()-timestamp)/1000));
-  if(seconds<60)return `${seconds} seconds ago`;
-  const minutes=Math.floor(seconds/60);if(minutes<60)return `${minutes} minute${minutes===1?'':'s'} ago`;
-  const hours=Math.floor(minutes/60);return `${hours} hour${hours===1?'':'s'} ago`;
-}
 function appendResponse(container,session,heading) {
   container.append(element('h2','session-response-heading',heading));
   if(session.summaryAt)container.append(element('p','field-note','Response captured · '+new Date(session.summaryAt).toLocaleString()));
@@ -33,7 +27,8 @@ function render() {
   const filter = $("#sessionFilter").value;
   const visible = selectSessions(sessions,provider,filter);
   const active = sessions.filter(s=>s.provider===provider&&isLiveTerminal(s));
-  $("#sessionCount").textContent = `${active.length} live · ${active.filter(s=>s.status==='waiting'||s.reply?.ready).length} waiting for you`;
+  const offline=active.filter(s=>!s.online).length;
+  $("#sessionCount").textContent = `${active.length-offline} live · ${offline} offline · ${active.filter(s=>s.online&&(s.status==='waiting'||s.reply?.ready)).length} waiting for you`;
   for(const button of document.querySelectorAll('[data-session-provider]')){
     const name=button.dataset.sessionProvider;
     button.setAttribute('aria-pressed',String(name===provider));
@@ -58,7 +53,7 @@ function render() {
     const statusLabel = pending.length ? 'Approval / answer needed' : channelMessage ? channelStatusText(channelMessage.status) : s.status === "idle" && !s.eventId ? "Ready" : labels[s.status];
     const status = element("span", "session-status", s.status === "closed" ? "Closed" : s.online ? statusLabel : `Offline · ${statusLabel}`);
     status.dataset.state = s.online ? s.status : "offline";
-    const preview=element('span','session-preview',pending.length ? pending[0].title + ' · ' + (pending[0].detail || '').slice(0,180) : channelMessage ? channelMessage.text : responseExcerpt(s));
+    const preview=element('span','session-preview',pending.length ? pending[0].title + ' · ' + (pending[0].detail || '').slice(0,180) : channelMessage ? channelMessage.text : sessionPreview(s));
     identity.append(preview,element('span','session-location',s.updatedAt>0?'Session update · '+new Date(s.updatedAt).toLocaleString():'No activity time available'));
     heading.append(identity, status);
     row.append(heading);
