@@ -360,7 +360,10 @@ and receiving window. The native Stop continuation runs in the same conversation
 AgentPulse never types into a shell or creates a parallel copy of the session.
 
 **Continue at computer** releases the wait without sending anything. You can also
-interrupt the waiting hook in your terminal. Working, offline, old, untracked and
+interrupt the waiting hook in your terminal. If the Mac sleeps or loses its
+connection while a session is waiting, the window reopens by itself once the
+Mac is back; a message queued during the gap is shown as not sent and must be
+sent again. Working, offline, old, untracked and
 closed sessions cannot receive messages. App/background processes are status-only; their Stop hooks never wait for mobile input. After the window expires, start another
 turn at the computer. Start new sessions after updating the installer, and review
 and trust the Codex hooks. Native agent limits on repeated Stop continuations still

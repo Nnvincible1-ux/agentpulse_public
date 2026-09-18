@@ -24,7 +24,7 @@ test('only a live receiver for the exact session accepts a message; one claim an
   assert.equal(r.send(f.message).id,'message');
   assert.throws(()=>r.send({...f.message,id:'second'}),/pending/);
   assert.deepEqual(r.poll(f.receiver),{status:'message',message:{id:'message',text:f.message.text}});
-  assert.deepEqual(r.poll(f.receiver),{status:'closed'});
+  assert.deepEqual(r.poll(f.receiver),{status:'closed',reason:'delivered'});
   assert.equal(r.view(f.session).messages[0].status,'claimed');
   r.ack({...f.receiver,id:'message'});
   assert.equal(r.view(f.session).messages[0].status,'delivered');
@@ -37,7 +37,7 @@ test('stale and wrong session receivers cannot receive old messages',t=>{
   assert.throws(()=>r.poll({...f.receiver,machineId:'other'}),/not_ready/);
   assert.throws(()=>r.poll({...f.receiver,receiverId:'other'}),/receiver_exists/);
   f.session.eventId='next-turn';
-  assert.deepEqual(r.poll(f.receiver),{status:'closed'});
+  assert.deepEqual(r.poll(f.receiver),{status:'closed',reason:'expired'});
   assert.equal(r.view(f.session).messages[0].status,'expired');
 });
 test('offline receivers, expired deadlines and busy sessions disable sending',t=>{
@@ -49,13 +49,23 @@ test('offline receivers, expired deadlines and busy sessions disable sending',t=
   f.session.status='working';
   assert.throws(()=>r.poll({...f.receiver,receiverId:'new'}),/not_ready/);
 });
+test('a receiver that lost its heartbeat (Mac asleep) is told why and can reopen the same turn with a fresh receiver',t=>{
+  const f=fixture(t),r=f.replies;
+  r.poll(f.receiver);r.send(f.message);f.tick(21000);
+  assert.deepEqual(r.poll(f.receiver),{status:'closed',reason:'expired'});
+  assert.equal(r.view(f.session).messages[0].status,'expired');
+  assert.deepEqual(r.poll({...f.receiver,receiverId:'after-wake'}),{status:'waiting'});
+  assert.equal(r.view(f.session).windowId,'after-wake');
+  assert.throws(()=>r.poll(f.receiver),/receiver_exists/);
+  assert.deepEqual(r.poll({...f.receiver,receiverId:'after-wake'}),{status:'waiting'});
+});
 test('release and cancel never send text, and new receivers do not inherit queued instructions',t=>{
   const f=fixture(t),r=f.replies;
   r.poll(f.receiver);r.send(f.message);
   r.cancel({...f.message});
   assert.deepEqual(r.poll(f.receiver),{status:'waiting'});
   r.send({...f.message,id:'next'});r.release(f.message);
-  assert.deepEqual(r.poll(f.receiver),{status:'closed'});
+  assert.deepEqual(r.poll(f.receiver),{status:'closed',reason:'cancelled'});
   assert.equal(r.view(f.session).messages[0].status,'cancelled');
   f.session.eventId='new-turn';
   assert.deepEqual(r.poll({...f.receiver,eventId:'new-turn',receiverId:'new'}),{status:'waiting'});

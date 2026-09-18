@@ -266,11 +266,11 @@ def main():
         try:
             publish(snapshot())
             if last_ok is not True:
-                print('AgentPulse session monitor connected.', flush=True)
+                print(time.strftime('%Y-%m-%d %H:%M:%S') + ' AgentPulse session monitor connected.', flush=True)
             last_ok = True
         except Exception:
             if last_ok is not False:
-                print('AgentPulse session monitor unavailable. Retrying; no session data logged.', flush=True)
+                print(time.strftime('%Y-%m-%d %H:%M:%S') + ' AgentPulse session monitor unavailable. Retrying; no session data logged.', flush=True)
             last_ok = False
         time.sleep(10)
 
