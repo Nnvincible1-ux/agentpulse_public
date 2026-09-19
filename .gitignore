@@ -5,3 +5,8 @@ data/vapid.json
 .DS_Store
 __pycache__/
 *.pyc
+
+# Installer and ad hoc backups: the history already holds every version.
+*.backup-*
+*.agentpulse-backup-*
+*-backup-before-*/
