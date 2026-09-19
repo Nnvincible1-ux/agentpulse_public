@@ -11,7 +11,9 @@ class InstallMonitorTests(unittest.TestCase):
         self.assertEqual(len(result['hooks']['Stop']), 2)
         self.assertEqual(add_hooks(result, 'claude', '/tmp/Agent Pulse/bridge/session_monitor.py'), result)
         self.assertFalse(result['hooks']['SessionEnd'][0]['hooks'][0].get('async', False))
-        self.assertEqual(result['hooks']['Stop'][-1]['hooks'][0]['timeout'],28815)
+        from mobile_replies import WAIT_SECONDS
+        self.assertEqual(result['hooks']['Stop'][-1]['hooks'][0]['timeout'], WAIT_SECONDS + 15)
+        self.assertEqual(WAIT_SECONDS, 2 * 3600)
         self.assertEqual(result['hooks']['PermissionRequest'][-1]['hooks'][0]['timeout'],3)
 
     def test_codex_gets_interrupt_but_no_unsupported_failure_hook(self):

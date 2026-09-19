@@ -10,6 +10,15 @@ import uuid
 from local_connection import load_connection, NoRedirect
 
 
+# Two hours: long enough to answer from a phone, short enough that a forgotten
+# session does not hold its terminal for a working day. install_monitor.py sets
+# the Stop hook timeout from this value.
+WAIT_SECONDS = 2 * 3600
+FAST_POLL_SECONDS = 3
+SLOW_POLL_SECONDS = 10
+FAST_POLL_WINDOW = 60
+
+
 def transport(action, body):
     connection=load_connection()
     request=urllib.request.Request(connection['AGENTPULSE_SERVER']+'/api/bridge/replies/'+action,
@@ -29,9 +38,10 @@ def valid_message(message):
     return isinstance(text,str) and bool(text.strip()) and len(text.encode('utf-16-le'))//2<=4000 and all(c in '\n\t' or not unicodedata.category(c).startswith('C') for c in text)
 
 
-def listen(scope, request=transport, output=sys.stdout, current=lambda:True, wait_seconds=8*3600, sleep=time.sleep, clock=time.time):
+def listen(scope, request=transport, output=sys.stdout, current=lambda:True, wait_seconds=WAIT_SECONDS, sleep=time.sleep, clock=time.time):
     # Wall-clock deadline: a sleeping Mac must not extend the window past what the server accepted.
-    deadline=int((clock()+wait_seconds)*1000)
+    started=clock()
+    deadline=int((started+wait_seconds)*1000)
     body={**scope,'receiverId':str(uuid.uuid4()),'deadline':deadline}
     while clock()*1000<deadline and current():
         try:
@@ -53,5 +63,8 @@ def listen(scope, request=transport, output=sys.stdout, current=lambda:True, wai
             elif result.get('status')!='waiting':break
         except Exception:
             pass  # Transient outage: keep waiting while the turn is current and the deadline holds.
-        sleep(min(3,max(0,deadline/1000-clock())))
+        # Answers usually arrive right after the agent stops, so poll closely for a
+        # minute and then back off; a full window costs ~740 requests instead of ~2400.
+        interval=FAST_POLL_SECONDS if clock()-started<FAST_POLL_WINDOW else SLOW_POLL_SECONDS
+        sleep(min(interval,max(0,deadline/1000-clock())))
     output.write('{}\n');output.flush()

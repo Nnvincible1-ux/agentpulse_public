@@ -208,6 +208,21 @@ class HookTests(unittest.TestCase):
             self.assertIn("claude-question-complete", cleanup["hooks"][0]["command"])
             self.assertTrue(list(Path(directory).glob("settings.json.agentpulse-backup-*")))
 
+    def test_installer_removes_the_older_local_connection_permission_hook(self):
+        legacy = {"matcher": "*", "hooks": [{"type": "command", "timeout": 2147483,
+                  "command": 'python3 "/opt/agentpulse/bridge/local_connection.py" claude'}]}
+        unrelated = {"matcher": "*", "hooks": [{"type": "command", "command": "echo keep-me"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Path(directory) / "settings.json"
+            settings.write_text(json.dumps({"hooks": {"PermissionRequest": [unrelated, legacy]}}))
+            subprocess.run([sys.executable, str(Path(__file__).with_name("install_claude.py")),
+                            "install", "--settings", str(settings)], check=True, capture_output=True)
+            entries = json.loads(settings.read_text())["hooks"]["PermissionRequest"]
+            commands = [h["command"] for entry in entries for h in entry["hooks"]]
+            self.assertEqual(sum("local_connection.py" in c for c in commands), 0)
+            self.assertEqual(sum("agentpulse_hook.py" in c for c in commands), 1)
+            self.assertIn("echo keep-me", commands)
+
     def test_question_normalizes_explicit_recommendation(self):
         event = {
             "cwd": "/tmp/my-project",

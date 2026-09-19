@@ -14,9 +14,6 @@ import time
 from session_monitor import private_directory, write_private, ROOT
 
 
-from mobile_replies import WAIT_SECONDS
-
-
 def add_hooks(data, provider, script):
     result = copy.deepcopy(data)
     hooks = result.setdefault('hooks', {})
@@ -29,7 +26,7 @@ def add_hooks(data, provider, script):
         if not isinstance(existing, list):
             raise ValueError('Hook event must be an array')
         existing = [item for item in existing if not any('session_monitor.py' in str(h.get('command', '')) for h in item.get('hooks', []) if isinstance(h, dict))]
-        hook = {'type': 'command', 'command': '/usr/bin/python3 -B ' + shlex.quote(str(script)) + ' ' + provider, 'timeout': WAIT_SECONDS + 15 if event == 'Stop' else 3}
+        hook = {'type': 'command', 'command': '/usr/bin/python3 -B ' + shlex.quote(str(script)) + ' ' + provider, 'timeout': 3}
         # Local writes are synchronous so older events cannot overwrite Stop.
         existing.append({'hooks': [hook]})
         hooks[event] = existing

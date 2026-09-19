@@ -65,6 +65,16 @@ class MobileRepliesTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue()),{})
         self.assertEqual(len(calls),6)
 
+    def test_polling_backs_off_after_the_first_minute_to_limit_server_load(self):
+        delays=[];clock=[0.0]
+        def sleep(seconds):delays.append(seconds);clock[0]+=seconds
+        def request(action,body):clock[0]+=0.01;return {'status':'waiting'}
+        listen({},request,io.StringIO(),lambda:True,wait_seconds=600,sleep=sleep,clock=lambda:clock[0])
+        self.assertEqual(delays[0],3)
+        self.assertTrue(all(d==3 for d in delays[:15]),delays[:15])
+        self.assertTrue(all(d in (10,0) or d<10 for d in delays[25:]),delays[25:])
+        self.assertLess(len(delays),120,'A ten minute wait must not cost 200 polls')
+
     def test_no_message_never_creates_an_automatic_continuation(self):
         output=io.StringIO()
         listen({},lambda *args: self.fail('No polling after expiry'),output,wait_seconds=0)

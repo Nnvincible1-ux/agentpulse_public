@@ -354,7 +354,7 @@ terminal available when a command is truly hung.
 ### Stop-hook fallback
 
 For interactive terminal sessions (with a TTY), after an agent finishes a response, its synchronous Stop hook waits for an explicit
-message for up to eight hours. In **Terminals**, expand that session, write a
+message for up to two hours. In **Terminals**, expand that session, write a
 follow-up and press **Send follow-up**. The message is bound to that Mac, session
 and receiving window. The native Stop continuation runs in the same conversation;
 AgentPulse never types into a shell or creates a parallel copy of the session.
