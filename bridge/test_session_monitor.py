@@ -76,16 +76,32 @@ class SessionMonitorTests(unittest.TestCase):
                 publish.assert_not_called()
                 output.assert_called_once_with('{}')
 
-    def test_terminal_stop_opens_channel_for_its_exact_session(self):
+    def test_stop_publishes_status_without_holding_the_terminal_by_default(self):
         row={'id':'s','status':'idle','activity':'Stop','eventId':'e','tty':'ttys001'}
-        with patch.object(monitor,'record',return_value=row), patch.object(monitor.sys,'argv',['monitor','claude']), patch.object(monitor,'publish') as publish, patch.object(monitor,'snapshot',return_value={'machineId':'mac'}), patch('mobile_replies.listen') as listen:
+        with patch.object(monitor,'record',return_value=row), patch.object(monitor.sys,'argv',['monitor','claude']), patch.object(monitor,'publish') as publish, patch.object(monitor,'snapshot',return_value={'machineId':'mac'}), patch.object(monitor,'follow_ups_enabled',return_value=False), patch('mobile_replies.listen') as listen, patch('builtins.print') as output:
+            monitor.main()
+            publish.assert_called_once()
+            listen.assert_not_called()
+            output.assert_called_once_with('{}')
+
+    def test_terminal_stop_opens_channel_for_its_exact_session_when_opted_in(self):
+        row={'id':'s','status':'idle','activity':'Stop','eventId':'e','tty':'ttys001'}
+        with patch.object(monitor,'record',return_value=row), patch.object(monitor.sys,'argv',['monitor','claude']), patch.object(monitor,'publish') as publish, patch.object(monitor,'snapshot',return_value={'machineId':'mac'}), patch.object(monitor,'follow_ups_enabled',return_value=True), patch('mobile_replies.listen') as listen:
             monitor.main()
             publish.assert_called_once()
             self.assertEqual(listen.call_args[0][0],{'machineId':'mac','sessionId':'s','eventId':'e'})
 
+    def test_follow_ups_are_off_unless_the_connection_opts_in(self):
+        with patch.object(monitor,'load_connection',return_value={'AGENTPULSE_STOP_FOLLOW_UPS':'false'}):
+            self.assertFalse(monitor.follow_ups_enabled())
+        with patch.object(monitor,'load_connection',return_value={'AGENTPULSE_STOP_FOLLOW_UPS':'true'}):
+            self.assertTrue(monitor.follow_ups_enabled())
+        with patch.object(monitor,'load_connection',side_effect=OSError('no connection')):
+            self.assertFalse(monitor.follow_ups_enabled())
+
     def test_live_claude_channel_skips_the_stop_reply_listener(self):
         row={'id':'s','status':'idle','activity':'Stop','eventId':'e','tty':'ttys001'}
-        with patch.object(monitor,'record',return_value=row), patch.object(monitor.sys,'argv',['monitor','claude']), patch.object(monitor,'publish') as publish, patch.object(monitor,'snapshot',return_value={'machineId':'mac'}), patch.object(monitor,'channel_live',return_value=True), patch('mobile_replies.listen') as listen, patch('builtins.print') as output:
+        with patch.object(monitor,'record',return_value=row), patch.object(monitor.sys,'argv',['monitor','claude']), patch.object(monitor,'publish') as publish, patch.object(monitor,'snapshot',return_value={'machineId':'mac'}), patch.object(monitor,'channel_live',return_value=True), patch.object(monitor,'follow_ups_enabled',return_value=True), patch('mobile_replies.listen') as listen, patch('builtins.print') as output:
             monitor.main()
             publish.assert_called_once()
             listen.assert_not_called()

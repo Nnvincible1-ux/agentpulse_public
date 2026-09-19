@@ -219,8 +219,10 @@ class HookTests(unittest.TestCase):
                             "install", "--settings", str(settings)], check=True, capture_output=True)
             entries = json.loads(settings.read_text())["hooks"]["PermissionRequest"]
             commands = [h["command"] for entry in entries for h in entry["hooks"]]
-            self.assertEqual(sum("local_connection.py" in c for c in commands), 0)
-            self.assertEqual(sum("agentpulse_hook.py" in c for c in commands), 1)
+            agentpulse = [c for c in commands
+                          if "local_connection.py" in c or "agentpulse_hook.py" in c]
+            self.assertEqual(len(agentpulse), 1, agentpulse)
+            self.assertNotIn("/opt/agentpulse/bridge", agentpulse[0])
             self.assertIn("echo keep-me", commands)
 
     def test_question_normalizes_explicit_recommendation(self):

@@ -59,10 +59,11 @@ def load_connection(path=CONNECTION):
     validate_token(data.get('token'))
     return {'AGENTPULSE_SERVER': server, 'AGENTPULSE_BRIDGE_TOKEN': data['token'],
             'AGENTPULSE_SHOW_PRIVATE_CONTENT': 'true' if data.get('show_private_content') is True else 'false',
-            'AGENTPULSE_ALLOW_MUTATING_REMOTE_APPROVALS': 'true' if data.get('allow_mutating_remote_approvals') is True else 'false'}
+            'AGENTPULSE_ALLOW_MUTATING_REMOTE_APPROVALS': 'true' if data.get('allow_mutating_remote_approvals') is True else 'false',
+            'AGENTPULSE_STOP_FOLLOW_UPS': 'true' if data.get('stop_follow_ups') is True else 'false'}
 
 
-def save_connection(path, server, token, allow_mutating=False, show_private=False):
+def save_connection(path, server, token, allow_mutating=False, show_private=False, stop_follow_ups=False):
     server = normalize_server(server)
     validate_token(token)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -72,7 +73,7 @@ def save_connection(path, server, token, allow_mutating=False, show_private=Fals
     fd, temporary = tempfile.mkstemp(prefix='.connection-', dir=str(path.parent))
     try:
         with os.fdopen(fd, 'w') as handle:
-            json.dump({'server': server, 'token': token, 'allow_mutating_remote_approvals': allow_mutating is True, 'show_private_content': show_private is True}, handle)
+            json.dump({'server': server, 'token': token, 'allow_mutating_remote_approvals': allow_mutating is True, 'show_private_content': show_private is True, 'stop_follow_ups': stop_follow_ups is True}, handle)
             handle.write('\n')
             handle.flush()
             os.fsync(handle.fileno())
@@ -86,13 +87,16 @@ def set_mobile_approvals(path, enabled):
     connection = load_connection(path)
     if not connection:
         raise ValueError('Configure the private AgentPulse connection first.')
-    save_connection(path, connection['AGENTPULSE_SERVER'], connection['AGENTPULSE_BRIDGE_TOKEN'], enabled, connection['AGENTPULSE_SHOW_PRIVATE_CONTENT'] == 'true')
+    save_connection(path, connection['AGENTPULSE_SERVER'], connection['AGENTPULSE_BRIDGE_TOKEN'], enabled,
+                    connection['AGENTPULSE_SHOW_PRIVATE_CONTENT'] == 'true', connection['AGENTPULSE_STOP_FOLLOW_UPS'] == 'true')
 
 def set_private_content(path, enabled):
     connection = load_connection(path)
     if not connection:
         raise ValueError('Configure the private AgentPulse connection first.')
-    save_connection(path, connection['AGENTPULSE_SERVER'], connection['AGENTPULSE_BRIDGE_TOKEN'], connection['AGENTPULSE_ALLOW_MUTATING_REMOTE_APPROVALS'] == 'true', enabled)
+    save_connection(path, connection['AGENTPULSE_SERVER'], connection['AGENTPULSE_BRIDGE_TOKEN'],
+                    connection['AGENTPULSE_ALLOW_MUTATING_REMOTE_APPROVALS'] == 'true', enabled,
+                    connection['AGENTPULSE_STOP_FOLLOW_UPS'] == 'true')
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

@@ -2,6 +2,7 @@
 """Explicit mobile follow-ups through the native Stop-hook continuation contract."""
 import json
 import re
+import subprocess
 import sys
 import time
 import unicodedata
@@ -14,6 +15,10 @@ from local_connection import load_connection, NoRedirect
 # session does not hold its terminal for a working day. install_monitor.py sets
 # the Stop hook timeout from this value.
 WAIT_SECONDS = 2 * 3600
+# The Stop hook blocks the terminal while it waits, and UserPromptSubmit cannot run
+# behind it, so the registry can never show the person typing. Recent keyboard or
+# mouse use is the only usable signal that they are back at the Mac.
+PRESENT_SECONDS = 60
 FAST_POLL_SECONDS = 3
 SLOW_POLL_SECONDS = 10
 FAST_POLL_WINDOW = 60
@@ -32,18 +37,39 @@ def transport(action, body):
         return result
 
 
+def read_hid_idle():
+    return subprocess.check_output(['/usr/sbin/ioreg', '-c', 'IOHIDSystem'], text=True,
+                                   stderr=subprocess.DEVNULL, timeout=2)
+
+
+def idle_seconds(source=read_hid_idle):
+    """Seconds since the last keyboard or mouse event, or inf when it cannot be read."""
+    for line in source().splitlines():
+        if 'HIDIdleTime' in line:
+            try:
+                return int(line.rsplit('=', 1)[1].strip()) / 1e9
+            except (ValueError, IndexError):
+                return float('inf')
+    return float('inf')
+
+
 def valid_message(message):
     if not isinstance(message,dict) or not isinstance(message.get('id'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',message['id']):return False
     text=message.get('text')
     return isinstance(text,str) and bool(text.strip()) and len(text.encode('utf-16-le'))//2<=4000 and all(c in '\n\t' or not unicodedata.category(c).startswith('C') for c in text)
 
 
-def listen(scope, request=transport, output=sys.stdout, current=lambda:True, wait_seconds=WAIT_SECONDS, sleep=time.sleep, clock=time.time):
+def listen(scope, request=transport, output=sys.stdout, current=lambda:True, wait_seconds=WAIT_SECONDS, sleep=time.sleep, clock=time.time, idle=idle_seconds):
     # Wall-clock deadline: a sleeping Mac must not extend the window past what the server accepted.
     started=clock()
     deadline=int((started+wait_seconds)*1000)
     body={**scope,'receiverId':str(uuid.uuid4()),'deadline':deadline}
     while clock()*1000<deadline and current():
+        try:
+            # Never hold the terminal of someone sitting at the Mac; they can just type.
+            if idle()<PRESENT_SECONDS:break
+        except Exception:
+            pass  # Idle time unreadable: keep the window open rather than dropping follow-ups.
         try:
             result=request('poll',body)
             if result.get('status')=='message':

@@ -120,5 +120,23 @@ class LocalConnectionTests(unittest.TestCase):
                 self.assertEqual(result.stdout.strip(), 'credentials-loaded')
 
 
+
+    def test_saving_other_settings_preserves_the_stop_follow_up_opt_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'connection.json'
+            module = self.module()
+            module.save_connection(path, 'https://pulse.example.com', 'token-1', stop_follow_ups=True)
+            self.assertEqual(module.load_connection(path)['AGENTPULSE_STOP_FOLLOW_UPS'], 'true')
+            module.set_private_content(path, True)
+            self.assertEqual(module.load_connection(path)['AGENTPULSE_STOP_FOLLOW_UPS'], 'true')
+
+    def test_stop_follow_ups_default_to_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'connection.json'
+            module = self.module()
+            module.save_connection(path, 'https://pulse.example.com', 'token-1')
+            self.assertEqual(module.load_connection(path)['AGENTPULSE_STOP_FOLLOW_UPS'], 'false')
+
+
 if __name__ == '__main__':
     unittest.main()

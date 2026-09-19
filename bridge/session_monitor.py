@@ -233,6 +233,14 @@ def publish(body):
             raise ValueError('Snapshot rejected')
 
 
+def follow_ups_enabled():
+    """Stop-hook follow-ups hold the terminal, so they stay off unless asked for."""
+    try:
+        return load_connection().get('AGENTPULSE_STOP_FOLLOW_UPS') == 'true'
+    except Exception:
+        return False
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else ''
     if mode in ('claude', 'codex'):
@@ -241,7 +249,7 @@ def main():
             if row and row['status'] == 'idle' and row['activity'] == 'Stop' and row.get('tty') not in (None, '', '??', '?'):
                 body = snapshot()
                 publish(body)
-                if mode == 'claude' and channel_live(row['id']):
+                if not follow_ups_enabled() or (mode == 'claude' and channel_live(row['id'])):
                     print('{}')
                     return
                 from mobile_replies import listen

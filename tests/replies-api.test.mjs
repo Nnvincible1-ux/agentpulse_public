@@ -30,7 +30,7 @@ test('authenticated follow-ups travel through real HTTP to each Stop listener; u
   assert.equal((await post('/api/mobile/replies/send',message,owner)).status,409);
   for(const provider of ['claude','codex']){
     // Transport and hook output are real; no model or shell command is executed.
-    const code=`import sys,json,urllib.request;sys.path.insert(0,'bridge');from mobile_replies import listen\ndef request(action,body):\n r=urllib.request.Request(${JSON.stringify(base)}+'/api/bridge/replies/'+action,data=json.dumps(body).encode(),headers={'Authorization':'Bearer test-bridge','Content-Type':'application/json'});return json.load(urllib.request.urlopen(r))\nlisten({'machineId':'mac','sessionId':${JSON.stringify(provider)},'eventId':'turn-'+${JSON.stringify(provider)}},request,wait_seconds=10)\n`;
+    const code=`import sys,json,urllib.request;sys.path.insert(0,'bridge');from mobile_replies import listen\ndef request(action,body):\n r=urllib.request.Request(${JSON.stringify(base)}+'/api/bridge/replies/'+action,data=json.dumps(body).encode(),headers={'Authorization':'Bearer test-bridge','Content-Type':'application/json'});return json.load(urllib.request.urlopen(r))\nlisten({'machineId':'mac','sessionId':${JSON.stringify(provider)},'eventId':'turn-'+${JSON.stringify(provider)}},request,wait_seconds=10,idle=lambda:1e9)\n`;
     const hook=spawn('python3',['-B','-c',code],{stdio:['ignore','pipe','pipe']});let output='',errors='';hook.stdout.on('data',d=>output+=d);hook.stderr.on('data',d=>errors+=d);
     const exit=new Promise(r=>hook.once('exit',r));t.after(()=>hook.kill());
     let session;

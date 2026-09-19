@@ -351,10 +351,22 @@ uncertain instruction. AgentPulse does not stream the terminal, collect a
 transcript, inject keystrokes, or remotely kill the Claude process. Keep the
 terminal available when a command is truly hung.
 
-### Stop-hook fallback
+### Stop-hook fallback (off by default)
 
-For interactive terminal sessions (with a TTY), after an agent finishes a response, its synchronous Stop hook waits for an explicit
-message for up to two hours. In **Terminals**, expand that session, write a
+The Stop hook is synchronous: while it waits, the terminal is blocked, and the
+prompt you type is only handled once the hook returns. Nothing can release it
+from inside the session either, because the event that would notice you typing
+cannot run behind the hook. So waiting is **off unless you ask for it**. Without
+it, AgentPulse still shows every session's status in **Terminals**; you refresh
+the page to see where each one stands. Live commands need the Claude Channel,
+which delivers without blocking anything.
+
+To turn waiting on, set `"stop_follow_ups": true` in
+`~/.config/agentpulse/connection.json` and start a new session.
+
+Once enabled, for interactive terminal sessions (with a TTY), after an agent finishes a response, its synchronous Stop hook waits for an explicit
+message for up to two hours, and releases as soon as you touch the keyboard or
+mouse on that Mac. In **Terminals**, expand that session, write a
 follow-up and press **Send follow-up**. The message is bound to that Mac, session
 and receiving window. The native Stop continuation runs in the same conversation;
 AgentPulse never types into a shell or creates a parallel copy of the session.
